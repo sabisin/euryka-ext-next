@@ -1,0 +1,38 @@
+{
+  "name": "euryka-ext-v2",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "postinstall": "wxt prepare",
+    "zip": "wxt zip",
+    "check": "wxt prepare && tsc --noEmit",
+    "lint": "biome lint --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.105.3",
+    "@tanstack/react-query": "^5.80.0",
+    "@webext-core/messaging": "^2.3.0",
+    "date-fns": "^4.1.0",
+    "embla-carousel-react": "^8.6.0",
+    "framer-motion": "^12.9.1",
+    "lucide-react": "^0.507.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^9.0.3",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@tailwindcss/vite": "^4.1.6",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.4",
+    "@wxt-dev/module-react": "^1.1.0",
+    "tailwindcss": "^4.1.6",
+    "typescript": "^5.8.3",
+    "wxt": "^0.20.25"
+  }
+}

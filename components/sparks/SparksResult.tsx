@@ -1,0 +1,68 @@
+import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
+import { IconWrapper } from "../shared/IconWrapper";
+import { StickyActionBar } from "../shared/StickyActionBar";
+import type { Spark } from "../../lib/types";
+
+const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+
+interface Props {
+  result: string;
+  sessionId: string | null;
+  sourceUrl: string | null;
+  spark: Spark | null;
+  wsId: string | null;
+  onBack: () => void;
+}
+
+export function SparksResult({ result, sessionId, sourceUrl, spark, wsId }: Props) {
+  const threadUrl =
+    wsId && sessionId
+      ? `${BASE_URL}/api/ws/${wsId}/extension/sessions/${sessionId}/thread`
+      : undefined;
+  const sourceHost = getHostname(sourceUrl);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 bg-background px-4 py-4 text-foreground">
+        {spark && (
+          <div className="flex min-w-0 items-center gap-2">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+              style={{ backgroundColor: spark.color || "#ff7074" }}
+            >
+              <IconWrapper name={spark.icon} color="white" size={16} />
+            </div>
+
+            <span className="truncate text-sm text-foreground/70">{spark.title}</span>
+
+            {sourceUrl && sourceHost && (
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 truncate text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                Source: {sourceHost}
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <AnimatedMarkdown content={result} />
+      </div>
+
+      <StickyActionBar content={result} openUrl={threadUrl} />
+    </div>
+  );
+}
+
+function getHostname(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
