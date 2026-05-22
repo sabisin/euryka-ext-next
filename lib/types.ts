@@ -13,6 +13,7 @@ export interface UserPrefs {
   theme?: "system" | "dark" | "light";
   annotationsHidden?: boolean;
   annotationsTab?: "current" | "all";
+  annotationPreviewTextSize?: "sm" | "md" | "lg";
 }
 
 export interface Collaborator {

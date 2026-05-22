@@ -692,7 +692,7 @@ export function AnnotationLayer() {
                       setSavedId(null);
                     }}
                     placeholder="What's new?"
-                    className={`min-h-28 w-full resize-none bg-transparent px-4 py-3 text-sm leading-relaxed outline-none ${textareaClassName}`}
+                    className={`ek-scroll min-h-28 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-relaxed outline-none ${textareaClassName}`}
                   />
 
                   <div className={`flex items-center justify-between border-t px-3 py-2.5 ${footerClassName}`}>

@@ -1,6 +1,7 @@
-import { ArrowLeft, Bold, Check, Eye, Italic, List, Pencil, Save, Strikethrough, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Bold, Check, Eye, Heading1, Heading2, Heading3, Italic, List, Pencil, Pilcrow, Save, Strikethrough, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+import { useStorageItem } from "../../hooks/use-storage-item";
 import {
   firestoreTimestampToMs,
   getAnnotation,
@@ -8,6 +9,8 @@ import {
 } from "../../lib/annotations-api";
 import { runWithTokenRetry } from "../../lib/auth";
 import { sendMessage } from "../../lib/messaging";
+import { userPrefs } from "../../lib/storage";
+import type { UserPrefs } from "../../lib/types";
 import { Button } from "../shared/Button";
 
 interface Props {
@@ -24,7 +27,19 @@ const FORMAT_ACTIONS = [
   { icon: <Bold size={13} />, title: "Bold", prefix: "**", suffix: "**" },
   { icon: <Italic size={13} />, title: "Italic", prefix: "_", suffix: "_" },
   { icon: <Strikethrough size={13} />, title: "Strikethrough", prefix: "~~", suffix: "~~" },
-  { icon: <List size={13} />, title: "Bullet list", prefix: "\n- ", suffix: "" },
+] as const;
+
+const BLOCK_FORMATS = [
+  { value: "normal", label: "Normal text", prefix: "", icon: <Pilcrow size={13} /> },
+  { value: "h1", label: "Heading 1", prefix: "# ", icon: <Heading1 size={13} /> },
+  { value: "h2", label: "Heading 2", prefix: "## ", icon: <Heading2 size={13} /> },
+  { value: "h3", label: "Heading 3", prefix: "### ", icon: <Heading3 size={13} /> },
+] as const;
+
+const PREVIEW_TEXT_SIZES = [
+  { value: "sm", label: "A", className: "prose-sm text-sm" },
+  { value: "md", label: "A", className: "prose-base text-base" },
+  { value: "lg", label: "A", className: "prose-lg text-lg" },
 ] as const;
 
 const ANNOTATION_UPDATED_EVENT = "eurykaAnnotationUpdated";
@@ -93,6 +108,12 @@ export function AnnotationHeaderTitle({ markerId, onBack }: HeaderTitleProps) {
 }
 
 export function AnnotationView({ markerId, onBack }: Props) {
+  const [prefs, setPrefs] = useStorageItem(userPrefs);
+  const typedPrefs = prefs as UserPrefs | undefined;
+  const previewTextSize = typedPrefs?.annotationPreviewTextSize ?? "sm";
+  const previewTextSizeClassName =
+    PREVIEW_TEXT_SIZES.find((size) => size.value === previewTextSize)?.className ??
+    PREVIEW_TEXT_SIZES[0].className;
   const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [draft, setDraft] = useState("");
@@ -161,6 +182,114 @@ export function AnnotationView({ markerId, onBack }: Props) {
     });
   };
 
+  const applyBlockFormat = (prefix: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const lineStart = draft.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const nextLineBreak = draft.indexOf("\n", end);
+    const lineEnd = nextLineBreak === -1 ? draft.length : nextLineBreak;
+    const before = draft.slice(0, lineStart);
+    const selectedBlock = draft.slice(lineStart, lineEnd);
+    const after = draft.slice(lineEnd);
+    const nextBlock = selectedBlock
+      .split("\n")
+      .map((line) => {
+        const withoutHeading = line.replace(/^\s{0,3}#{1,6}\s+/, "");
+        return withoutHeading.trim() ? `${prefix}${withoutHeading}` : withoutHeading;
+      })
+      .join("\n");
+    const nextDraft = before + nextBlock + after;
+
+    setDraft(nextDraft);
+    setSaved(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(lineStart, lineStart + nextBlock.length);
+    });
+  };
+
+  const applyListFormat = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const lineStart = draft.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const nextLineBreak = draft.indexOf("\n", end);
+    const lineEnd = nextLineBreak === -1 ? draft.length : nextLineBreak;
+    const before = draft.slice(0, lineStart);
+    const selectedBlock = draft.slice(lineStart, lineEnd);
+    const after = draft.slice(lineEnd);
+    const lines = selectedBlock.split("\n");
+    const allListItems = lines
+      .filter((line) => line.trim())
+      .every((line) => /^\s*-\s+/.test(line));
+    const nextBlock = lines
+      .map((line) => {
+        if (!line.trim()) return line;
+        const withoutList = line.replace(/^\s*-\s+/, "");
+        return allListItems ? withoutList : `- ${withoutList}`;
+      })
+      .join("\n");
+    const nextDraft = before + nextBlock + after;
+
+    setDraft(nextDraft);
+    setSaved(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(lineStart, lineStart + nextBlock.length);
+    });
+  };
+
+  const handleEditorShortcut = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    if (event.altKey) return;
+
+    const key = event.key.toLowerCase();
+    if (key === "b") {
+      event.preventDefault();
+      applyFormat("**", "**");
+      return;
+    }
+    if (key === "i") {
+      event.preventDefault();
+      applyFormat("_", "_");
+      return;
+    }
+    if (key === "s") {
+      event.preventDefault();
+      void save();
+      return;
+    }
+    if (key === "l") {
+      event.preventDefault();
+      applyListFormat();
+      return;
+    }
+    if (key === "0") {
+      event.preventDefault();
+      applyBlockFormat("");
+      return;
+    }
+    if (key === "1") {
+      event.preventDefault();
+      applyBlockFormat("# ");
+      return;
+    }
+    if (key === "2") {
+      event.preventDefault();
+      applyBlockFormat("## ");
+      return;
+    }
+    if (key === "3") {
+      event.preventDefault();
+      applyBlockFormat("### ");
+    }
+  };
+
   const save = async () => {
     if (!annotation) return;
     const response = await sendMessage("updateAnnotation", {
@@ -206,6 +335,13 @@ export function AnnotationView({ markerId, onBack }: Props) {
 
   const enterEditMode = () => setIsPreview(false);
 
+  const setPreviewTextSize = (size: UserPrefs["annotationPreviewTextSize"]) => {
+    void setPrefs((current) => ({
+      ...current!,
+      annotationPreviewTextSize: size,
+    }));
+  };
+
   if (isLoading) {
     return <div className="p-4 text-sm text-muted-foreground">Loading annotation...</div>;
   }
@@ -241,20 +377,71 @@ export function AnnotationView({ markerId, onBack }: Props) {
             </Button>
 
             {!isPreview &&
-              FORMAT_ACTIONS.map((action) => (
+              <>
+                <div className="mr-1 flex items-center gap-px border-r border-border pr-2">
+                  {BLOCK_FORMATS.map((format) => (
+                    <Button
+                      key={format.value}
+                      variant="icon"
+                      size="icon-sm"
+                      title={format.label}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applyBlockFormat(format.prefix);
+                      }}
+                    >
+                      {format.icon}
+                    </Button>
+                  ))}
+                </div>
+                {FORMAT_ACTIONS.map((action) => (
+                  <Button
+                    key={action.title}
+                    variant="icon"
+                    size="icon-sm"
+                    title={action.title}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applyFormat(action.prefix, action.suffix);
+                    }}
+                  >
+                    {action.icon}
+                  </Button>
+                ))}
                 <Button
-                  key={action.title}
                   variant="icon"
                   size="icon-sm"
-                  title={action.title}
+                  title="Bullet list"
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    applyFormat(action.prefix, action.suffix);
+                    applyListFormat();
                   }}
                 >
-                  {action.icon}
+                  <List size={13} />
                 </Button>
-              ))}
+              </>}
+            {isPreview && (
+              <div className="ml-1 flex items-center gap-px border-l border-border pl-2">
+                {PREVIEW_TEXT_SIZES.map((size) => (
+                  <Button
+                    key={size.value}
+                    variant={previewTextSize === size.value ? "secondary" : "icon"}
+                    size="icon-sm"
+                    title={`Preview text ${size.value}`}
+                    onClick={() => setPreviewTextSize(size.value)}
+                    className={
+                      size.value === "sm"
+                        ? "text-[10px]"
+                        : size.value === "md"
+                          ? "text-xs"
+                          : "text-sm"
+                    }
+                  >
+                    {size.label}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-px">
@@ -280,11 +467,11 @@ export function AnnotationView({ markerId, onBack }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <div className="px-4 py-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1 px-4 py-4">
           {isPreview ? (
             <div
-              className="prose prose-sm max-w-none cursor-text text-foreground/75"
+              className={`prose min-h-[360px] w-full max-w-none cursor-text rounded-md border border-border/70 bg-card/25 px-3 py-3 text-foreground/75 ${previewTextSizeClassName}`}
               onClick={enterEditMode}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" && event.key !== " ") return;
@@ -296,7 +483,9 @@ export function AnnotationView({ markerId, onBack }: Props) {
               title="Edit annotation"
             >
               {draft.trim() ? (
-                <ReactMarkdown>{draft}</ReactMarkdown>
+                <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                  {withHardLineBreaks(draft)}
+                </ReactMarkdown>
               ) : (
                 <p className="italic text-muted-foreground/50 text-sm">
                   No note yet - switch to edit mode to add one.
@@ -312,8 +501,9 @@ export function AnnotationView({ markerId, onBack }: Props) {
                 setDraft(event.target.value);
                 setSaved(false);
               }}
+              onKeyDown={handleEditorShortcut}
               placeholder={"Write a note...\n\nTip: **bold**, _italic_, ~~strikethrough~~, - list"}
-              className="min-h-36 w-full resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40 leading-relaxed"
+              className="ek-scroll min-h-[360px] w-full flex-1 resize-none rounded-md border border-border/70 bg-card/25 px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-muted-foreground/45"
             />
           )}
         </div>
@@ -330,3 +520,46 @@ function formatDate(annotation: Annotation): string {
     minute: "2-digit",
   }).format(new Date(firestoreTimestampToMs(annotation.createdAt)));
 }
+
+function withHardLineBreaks(value: string): string {
+  return value.replace(/\n/g, "  \n");
+}
+
+const MARKDOWN_COMPONENTS = {
+  h1: ({ children }: { children?: ReactNode }) => (
+    <h1 className="mb-3 mt-1 text-2xl font-semibold leading-tight text-foreground">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: { children?: ReactNode }) => (
+    <h2 className="mb-2.5 mt-4 text-xl font-semibold leading-tight text-foreground">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: { children?: ReactNode }) => (
+    <h3 className="mb-2 mt-3 text-lg font-semibold leading-tight text-foreground">
+      {children}
+    </h3>
+  ),
+  p: ({ children }: { children?: ReactNode }) => (
+    <p className="mb-2 leading-relaxed text-foreground/80">{children}</p>
+  ),
+  ul: ({ children }: { children?: ReactNode }) => (
+    <ul className="mb-3 ml-5 list-disc space-y-1 text-foreground/80">{children}</ul>
+  ),
+  ol: ({ children }: { children?: ReactNode }) => (
+    <ol className="mb-3 ml-5 list-decimal space-y-1 text-foreground/80">{children}</ol>
+  ),
+  li: ({ children }: { children?: ReactNode }) => (
+    <li className="pl-1 leading-relaxed">{children}</li>
+  ),
+  strong: ({ children }: { children?: ReactNode }) => (
+    <strong className="font-semibold text-foreground">{children}</strong>
+  ),
+  em: ({ children }: { children?: ReactNode }) => (
+    <em className="italic text-foreground/85">{children}</em>
+  ),
+  del: ({ children }: { children?: ReactNode }) => (
+    <del className="text-foreground/65">{children}</del>
+  ),
+};
