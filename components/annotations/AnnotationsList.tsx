@@ -40,10 +40,25 @@ function filterBySearch(annotations: Annotation[], term: string): Annotation[] {
     const haystack = [
       annotation.note ?? "",
       annotation.selectedText ?? "",
-      annotation.targetUrl,
     ].join(" ").toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
+}
+
+function buildAnnotationNumbers(annotations: Annotation[]): Map<string, number> {
+  const byUrl = new Map<string, Annotation[]>();
+  for (const annotation of annotations) {
+    if (!byUrl.has(annotation.targetUrl)) byUrl.set(annotation.targetUrl, []);
+    byUrl.get(annotation.targetUrl)!.push(annotation);
+  }
+
+  const result = new Map<string, number>();
+  for (const groupAnnotations of byUrl.values()) {
+    [...groupAnnotations]
+      .sort((a, b) => firestoreTimestampToMs(a.createdAt) - firestoreTimestampToMs(b.createdAt))
+      .forEach((annotation, index) => result.set(annotation.id, index + 1));
+  }
+  return result;
 }
 
 export function AnnotationsList({ onSelectMarker }: Props) {
@@ -150,6 +165,11 @@ export function AnnotationsList({ onSelectMarker }: Props) {
   const filteredAnnotations = useMemo(
     () => filterBySearch(annotations, searchTerm),
     [annotations, searchTerm],
+  );
+
+  const annotationNumbers = useMemo(
+    () => buildAnnotationNumbers(annotations),
+    [annotations],
   );
 
   const allGroups = useMemo<AnnotationGroup[]>(() => {
@@ -259,6 +279,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
           <div className="flex flex-col gap-2">
             <AnnotationListItems
               annotations={filteredAnnotations}
+              annotationNumbers={annotationNumbers}
               onSelectAnnotation={onSelectMarker}
               onDeleteAnnotation={deleteItem}
             />
@@ -283,6 +304,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
                 </button>
                 <AnnotationListItems
                   annotations={group.annotations}
+                  annotationNumbers={annotationNumbers}
                   onSelectAnnotation={onSelectMarker}
                   onDeleteAnnotation={deleteItem}
                 />
@@ -351,16 +373,19 @@ function AnnotationsLoadingState() {
 
 function AnnotationListItems({
   annotations,
+  annotationNumbers,
   onSelectAnnotation,
   onDeleteAnnotation,
 }: {
   annotations: Annotation[];
+  annotationNumbers: Map<string, number>;
   onSelectAnnotation: (id: string) => void;
   onDeleteAnnotation: (annotation: Annotation) => void;
 }) {
   return (
     <div className="flex flex-col gap-px">
       {annotations.map((annotation) => {
+        const markerNumber = annotationNumbers.get(annotation.id);
         const metaParts = [
           annotation.selectedText ? `"${annotation.selectedText}"` : null,
           formatDate(annotation),
@@ -380,10 +405,15 @@ function AnnotationListItems({
             className="group flex h-[58px] w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 text-left transition-all hover:border-border/60 hover:bg-card active:scale-[0.99] active:bg-muted/60"
           >
             <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-[11px] font-bold text-white"
+              className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-[11px] font-bold text-white"
               title={annotation.createdBy}
             >
               <img src={logo} alt="" draggable={false} className="h-3.5 w-3.5" />
+              {markerNumber != null && (
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-card bg-zinc-950 px-0.5 text-[8px] font-bold leading-none text-white">
+                  {markerNumber}
+                </span>
+              )}
             </span>
 
             <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">

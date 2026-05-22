@@ -177,6 +177,15 @@ export function AnnotationView({ markerId, onBack }: Props) {
     await save();
   };
 
+  const togglePreview = async () => {
+    if (isPreview) {
+      setIsPreview(false);
+      return;
+    }
+
+    await saveAndExitEditMode();
+  };
+
   useEffect(() => {
     if (isPreview) return;
 
@@ -226,7 +235,7 @@ export function AnnotationView({ markerId, onBack }: Props) {
               variant="icon"
               size="icon-sm"
               title={isPreview ? "Edit" : "Preview"}
-              onClick={() => setIsPreview((current) => !current)}
+              onClick={() => void togglePreview()}
             >
               {isPreview ? <Pencil size={12} /> : <Eye size={12} />}
             </Button>
