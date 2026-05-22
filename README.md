@@ -77,6 +77,37 @@ Then load the extension in Chrome:
 
 WXT will watch for changes and rebuild automatically. Reload the extension in Chrome after each rebuild.
 
+## Upgrading WXT
+
+Upgrade WXT when the project needs a documented bug fix, browser compatibility change, security fix, or WXT feature. Avoid routine `@latest` upgrades without a reason.
+
+WXT is still on `0.X`, so treat changes to the second version number as major upgrades. For example, `0.20.x` to `0.21.x` should be handled as a migration, not a casual patch.
+
+Recommended process:
+
+1. Read the official [WXT upgrade guide](https://wxt.dev/guide/resources/upgrading) for the target version.
+2. Check registry metadata and prefer a WXT version that has been publicly released for at least 7 days.
+3. Update WXT and related WXT packages with Bun's release-age gate:
+
+```bash
+bun add -d wxt@<version> @wxt-dev/module-react@<version> --minimum-release-age 604800
+```
+
+4. Regenerate WXT types:
+
+```bash
+bunx wxt prepare
+```
+
+5. Run the project checks:
+
+```bash
+bun run check
+bun run build
+```
+
+Before release, compare the generated extension manifest against the previous release. New or changed permissions can disable the installed extension until the user manually re-enables it.
+
 ## Production build
 
 ```bash
