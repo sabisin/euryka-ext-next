@@ -1,4 +1,4 @@
-import { ArrowLeft, Bold, Check, Eye, Heading1, Heading2, Heading3, Italic, List, Pencil, Pilcrow, Save, Strikethrough, Trash2 } from "lucide-react";
+import { ArrowLeft, Bold, Check, ChevronDown, Eye, Heading1, Heading2, Heading3, Italic, List, Pencil, Pilcrow, Save, Strikethrough, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { useStorageItem } from "../../hooks/use-storage-item";
@@ -118,6 +118,7 @@ export function AnnotationView({ markerId, onBack }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [isPreview, setIsPreview] = useState(false);
+  const [isBlockMenuOpen, setIsBlockMenuOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -211,6 +212,11 @@ export function AnnotationView({ markerId, onBack }: Props) {
     });
   };
 
+  const selectBlockFormat = (prefix: string) => {
+    setIsBlockMenuOpen(false);
+    applyBlockFormat(prefix);
+  };
+
   const applyListFormat = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -302,11 +308,13 @@ export function AnnotationView({ markerId, onBack }: Props) {
   };
 
   const saveAndExitEditMode = async () => {
+    setIsBlockMenuOpen(false);
     setIsPreview(true);
     await save();
   };
 
   const togglePreview = async () => {
+    setIsBlockMenuOpen(false);
     if (isPreview) {
       setIsPreview(false);
       return;
@@ -333,7 +341,10 @@ export function AnnotationView({ markerId, onBack }: Props) {
     await sendMessage("deleteAnnotation", { id: annotation.id });
   };
 
-  const enterEditMode = () => setIsPreview(false);
+  const enterEditMode = () => {
+    setIsBlockMenuOpen(false);
+    setIsPreview(false);
+  };
 
   const setPreviewTextSize = (size: UserPrefs["annotationPreviewTextSize"]) => {
     void setPrefs((current) => ({
@@ -378,21 +389,41 @@ export function AnnotationView({ markerId, onBack }: Props) {
 
             {!isPreview &&
               <>
-                <div className="mr-1 flex items-center gap-px border-r border-border pr-2">
-                  {BLOCK_FORMATS.map((format) => (
-                    <Button
-                      key={format.value}
-                      variant="icon"
-                      size="icon-sm"
-                      title={format.label}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        applyBlockFormat(format.prefix);
-                      }}
-                    >
-                      {format.icon}
-                    </Button>
-                  ))}
+                <div className="relative mr-1 border-r border-border pr-2">
+                  <Button
+                    variant="icon"
+                    size="icon-sm"
+                    title="Text style"
+                    aria-haspopup="menu"
+                    aria-expanded={isBlockMenuOpen}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setIsBlockMenuOpen((open) => !open);
+                    }}
+                    className="w-9 gap-0.5"
+                  >
+                    <Pilcrow size={13} />
+                    <ChevronDown size={10} />
+                  </Button>
+                  {isBlockMenuOpen && (
+                    <div className="absolute left-0 top-7 z-20 min-w-32 overflow-hidden rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
+                      {BLOCK_FORMATS.map((format) => (
+                        <button
+                          key={format.value}
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            selectBlockFormat(format.prefix);
+                          }}
+                        >
+                          {format.icon}
+                          <span>{format.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {FORMAT_ACTIONS.map((action) => (
                   <Button
