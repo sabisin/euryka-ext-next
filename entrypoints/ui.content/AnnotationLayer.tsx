@@ -1,5 +1,5 @@
 import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import {
   firestoreTimestampToMs,
   type Annotation,
@@ -26,6 +26,10 @@ type ContextPoint = {
 type ResolvedTheme = "dark" | "light";
 
 const MARKER_SIZE = 32;
+const COMPOSER_WIDTH = 320;
+const COMPOSER_ESTIMATED_HEIGHT = 280;
+const COMPOSER_MARKER_GAP = 4;
+const COMPOSER_EDGE_GAP = 12;
 const DEBUG_ANNOTATION_POSITIONING = false;
 const FORMAT_ACTIONS = [
   { icon: <Bold size={13} />, title: "Bold", prefix: "**", suffix: "**" },
@@ -240,6 +244,23 @@ function resolveViewportPos(annotation: Annotation): { left: number; top: number
   return {
     left: selector.x - window.scrollX - MARKER_SIZE / 2,
     top: selector.y - window.scrollY - MARKER_SIZE / 2,
+  };
+}
+
+function getComposerPositionStyle(markerLeft: number, markerTop: number): CSSProperties {
+  const opensLeft =
+    markerLeft + MARKER_SIZE + COMPOSER_MARKER_GAP + COMPOSER_WIDTH + COMPOSER_EDGE_GAP >
+    window.innerWidth;
+  const opensUp =
+    markerTop + COMPOSER_ESTIMATED_HEIGHT + COMPOSER_EDGE_GAP >
+    window.innerHeight;
+
+  return {
+    width: `${COMPOSER_WIDTH}px`,
+    ...(opensLeft
+      ? { right: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px` }
+      : { left: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px` }),
+    ...(opensUp ? { bottom: "0" } : { top: "0" }),
   };
 }
 
@@ -604,6 +625,7 @@ export function AnnotationLayer() {
         const initial = identityInitial(myIdentity ?? annotation.createdBy);
         const composerName = myIdentity || "Annotation";
         const isDark = theme === "dark";
+        const composerPositionStyle = getComposerPositionStyle(left, top);
         const composerClassName = isDark
           ? "border-zinc-700 bg-zinc-950 text-zinc-100 shadow-2xl"
           : "border-zinc-200 bg-white text-zinc-950 shadow-2xl";
@@ -656,7 +678,10 @@ export function AnnotationLayer() {
             </button>
 
             {isActive && (
-              <div className={`absolute left-9 top-0 w-[320px] overflow-hidden rounded-xl border ${composerClassName}`}>
+              <div
+                className={`absolute overflow-hidden rounded-xl border ${composerClassName}`}
+                style={composerPositionStyle}
+              >
                 <Button
                   variant="icon"
                   size="icon-md"
