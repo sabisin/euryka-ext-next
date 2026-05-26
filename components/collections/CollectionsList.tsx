@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { EmojiPicker, type EmojiPickerListCategoryHeaderProps, type EmojiPickerListEmojiProps, type EmojiPickerListRowProps } from "frimousse";
 import { Bookmark, Check, ChevronDown, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { useStorageItem } from "../../hooks/use-storage-item";
-import { collectionsStorage, collectionItemsStorage } from "../../lib/storage";
+import { collectionEmojiHistoryStorage, collectionsStorage, collectionItemsStorage } from "../../lib/storage";
 import type { Collection, CollectionItem } from "../../lib/types";
 import { CollectionItemCard } from "./CollectionItemCard";
 import { Button } from "../shared/Button";
@@ -12,22 +13,26 @@ interface Props {
 }
 
 const EMOJIS = ["📁", "⭐", "🔖", "💡", "🎨", "📌", "🧠", "🔗", "📚", "🎯"];
+const CUSTOM_EMOJI_LIMIT = 3;
 
 type Filter = "all" | string;
 
 export function CollectionsList({ onSelectCollection }: Props) {
   const [collections, setCollections] = useStorageItem(collectionsStorage);
   const [allItems, setAllItems] = useStorageItem(collectionItemsStorage);
+  const [customEmojis, setCustomEmojis] = useStorageItem(collectionEmojiHistoryStorage);
 
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState(EMOJIS[0]);
+  const [newEmojiPickerOpen, setNewEmojiPickerOpen] = useState(false);
   const [filters, setFilters] = useState<Filter[]>(["all"]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState(EMOJIS[0]);
+  const [editEmojiPickerOpen, setEditEmojiPickerOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +44,7 @@ export function CollectionsList({ onSelectCollection }: Props) {
     setIsCreating(true);
     setNewName("");
     setNewEmoji(EMOJIS[0]);
+    setNewEmojiPickerOpen(false);
     setTimeout(() => nameInputRef.current?.focus(), 50);
   };
 
@@ -66,6 +72,7 @@ export function CollectionsList({ onSelectCollection }: Props) {
     setEditingId(collection.id);
     setEditName(collection.name);
     setEditEmoji(collection.emoji);
+    setEditEmojiPickerOpen(false);
     setTimeout(() => editInputRef.current?.focus(), 50);
   };
 
@@ -155,6 +162,24 @@ export function CollectionsList({ onSelectCollection }: Props) {
 
   const filterOptions: Filter[] = ["all", ...collectionList.map((c) => c.id)];
 
+  const rememberCustomEmoji = (emoji: string) => {
+    if (EMOJIS.includes(emoji)) return;
+    void setCustomEmojis((current) => [
+      emoji,
+      ...(current ?? []).filter((item) => item !== emoji),
+    ].slice(0, CUSTOM_EMOJI_LIMIT));
+  };
+
+  const selectNewEmoji = (emoji: string) => {
+    setNewEmoji(emoji);
+    rememberCustomEmoji(emoji);
+  };
+
+  const selectEditEmoji = (emoji: string) => {
+    setEditEmoji(emoji);
+    rememberCustomEmoji(emoji);
+  };
+
   const toggleFilter = (key: Filter) => {
     if (key === "all") {
       setFilters(["all"]);
@@ -231,16 +256,25 @@ export function CollectionsList({ onSelectCollection }: Props) {
         {isCreating && (
           <div className="border-b border-border px-4 py-3">
             <div className="mb-2 flex flex-wrap gap-1">
-              {EMOJIS.map((e) => (
+              {[...EMOJIS, ...(customEmojis ?? [])].map((e) => (
                 <button
                   key={e}
                   type="button"
-                  onClick={() => setNewEmoji(e)}
+                  onClick={() => selectNewEmoji(e)}
                   className={`h-7 w-7 rounded text-sm transition-colors ${newEmoji === e ? "bg-primary/20 ring-1 ring-primary" : "hover:bg-accent"}`}
                 >
                   {e}
                 </button>
               ))}
+              <EmojiPickerPopover
+                open={newEmojiPickerOpen}
+                selectedEmoji={newEmoji}
+                onOpenChange={setNewEmojiPickerOpen}
+                onSelect={(emoji) => {
+                  selectNewEmoji(emoji);
+                  setNewEmojiPickerOpen(false);
+                }}
+              />
             </div>
             <input
               ref={nameInputRef}
@@ -301,11 +335,11 @@ export function CollectionsList({ onSelectCollection }: Props) {
                 {isEditing ? (
                   <div className="border-b border-border/60 px-4 py-3">
                     <div className="mb-2 flex flex-wrap gap-1">
-                      {EMOJIS.map((emoji) => (
+                      {[...EMOJIS, ...(customEmojis ?? [])].map((emoji) => (
                         <button
                           key={emoji}
                           type="button"
-                          onClick={() => setEditEmoji(emoji)}
+                          onClick={() => selectEditEmoji(emoji)}
                           className={`h-7 w-7 rounded text-sm transition-colors ${
                             editEmoji === emoji
                               ? "bg-primary/20 ring-1 ring-primary"
@@ -315,6 +349,15 @@ export function CollectionsList({ onSelectCollection }: Props) {
                           {emoji}
                         </button>
                       ))}
+                      <EmojiPickerPopover
+                        open={editEmojiPickerOpen}
+                        selectedEmoji={editEmoji}
+                        onOpenChange={setEditEmojiPickerOpen}
+                        onSelect={(emoji) => {
+                          selectEditEmoji(emoji);
+                          setEditEmojiPickerOpen(false);
+                        }}
+                      />
                     </div>
                     <div className="flex items-center gap-2">
                       <input
@@ -439,6 +482,112 @@ function CollectionsLoadingState() {
         </div>
       ))}
     </div>
+  );
+}
+
+function EmojiPickerPopover({
+  open,
+  selectedEmoji,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean;
+  selectedEmoji: string;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (emoji: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        title="Choose emoji"
+        aria-label="Choose emoji"
+        aria-expanded={open}
+      >
+        <Plus size={14} />
+      </button>
+
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close emoji picker"
+            className="fixed inset-0 z-40 cursor-default bg-transparent"
+            onClick={() => onOpenChange(false)}
+          />
+          <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-64 overflow-hidden rounded-md border border-border bg-background shadow-xl">
+            <EmojiPicker.Root
+              columns={8}
+              onEmojiSelect={({ emoji }) => onSelect(emoji)}
+              className="flex flex-col"
+            >
+              <div className="flex items-center gap-2 border-b border-border px-2 py-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-muted text-sm">
+                  {selectedEmoji}
+                </span>
+                <EmojiPicker.Search
+                  autoFocus
+                  placeholder="Search emoji"
+                  className="h-7 min-w-0 flex-1 rounded border border-border bg-card px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary"
+                />
+              </div>
+              <EmojiPicker.Viewport className="ek-scroll h-56 overflow-y-auto">
+                <EmojiPicker.Loading className="block px-3 py-3 text-xs text-muted-foreground">
+                  Loading...
+                </EmojiPicker.Loading>
+                <EmojiPicker.Empty className="block px-3 py-3 text-xs text-muted-foreground">
+                  No emoji found.
+                </EmojiPicker.Empty>
+                <EmojiPicker.List
+                  className="p-1.5"
+                  components={{
+                    CategoryHeader: EmojiCategoryHeader,
+                    Row: EmojiRow,
+                    Emoji: EmojiButton,
+                  }}
+                />
+              </EmojiPicker.Viewport>
+            </EmojiPicker.Root>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmojiCategoryHeader({ category, ...props }: EmojiPickerListCategoryHeaderProps) {
+  return (
+    <div
+      {...props}
+      className="bg-background/95 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+    >
+      {category.label}
+    </div>
+  );
+}
+
+function EmojiRow({ children, ...props }: EmojiPickerListRowProps) {
+  return (
+    <div {...props} className="grid grid-cols-8 gap-0.5">
+      {children}
+    </div>
+  );
+}
+
+function EmojiButton({ emoji, ...props }: EmojiPickerListEmojiProps) {
+  return (
+    <button
+      {...props}
+      type="button"
+      className={`flex h-7 w-7 items-center justify-center rounded text-base transition-colors ${
+        emoji.isActive ? "bg-accent" : "hover:bg-accent"
+      }`}
+      title={emoji.label}
+    >
+      {emoji.emoji}
+    </button>
   );
 }
 

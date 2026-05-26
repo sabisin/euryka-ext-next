@@ -338,7 +338,7 @@ function collectionFromRow(row: CollectionRow, sharedWith: string[] = []): Colle
   return {
     id: row.id,
     name: row.name,
-    emoji: undefined,
+    emoji: row.description ?? undefined,
     sharedWith,
     createdAt: timestampFromRow(row),
   };
@@ -349,7 +349,7 @@ function collectionToRow(collection: Collection, userId: string): CollectionRow 
     id: collection.id,
     user_id: userId,
     name: collection.name,
-    description: null,
+    description: collection.emoji ?? null,
     source_url: null,
     item_count: null,
     created_at: dateFromTimestamp(collection.createdAt),

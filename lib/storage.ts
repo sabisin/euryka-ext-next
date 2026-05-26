@@ -43,6 +43,11 @@ export const collaboratorsStorage = storage.defineItem<Collaborator[]>(
   { defaultValue: [] },
 );
 
+export const collectionEmojiHistoryStorage = storage.defineItem<string[]>(
+  "local:collectionEmojiHistory",
+  { defaultValue: [] },
+);
+
 const localCollectionsStorage = storage.defineItem<Collection[]>("local:collections", {
   defaultValue: [],
 });
