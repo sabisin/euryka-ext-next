@@ -75,26 +75,27 @@ export default defineBackground(() => {
         documentUrlPatterns: ["http://*/*", "https://*/*"],
       });
 
-      chrome.contextMenus.create({
-        id: "savePageToCollection",
-        title: "Save page to Collection",
-        contexts: ["page"],
-        documentUrlPatterns: ["http://*/*", "https://*/*"],
-      });
+      // Collections access is temporarily disabled while the flow is revisited.
+      // chrome.contextMenus.create({
+      //   id: "savePageToCollection",
+      //   title: "Save page to Collection",
+      //   contexts: ["page"],
+      //   documentUrlPatterns: ["http://*/*", "https://*/*"],
+      // });
 
-      chrome.contextMenus.create({
-        id: "saveSelectionToCollection",
-        title: "Save selection to Collection",
-        contexts: ["selection"],
-        documentUrlPatterns: ["http://*/*", "https://*/*"],
-      });
+      // chrome.contextMenus.create({
+      //   id: "saveSelectionToCollection",
+      //   title: "Save selection to Collection",
+      //   contexts: ["selection"],
+      //   documentUrlPatterns: ["http://*/*", "https://*/*"],
+      // });
 
-      chrome.contextMenus.create({
-        id: "saveImageToCollection",
-        title: "Save image to Collection",
-        contexts: ["image"],
-        documentUrlPatterns: ["http://*/*", "https://*/*"],
-      });
+      // chrome.contextMenus.create({
+      //   id: "saveImageToCollection",
+      //   title: "Save image to Collection",
+      //   contexts: ["image"],
+      //   documentUrlPatterns: ["http://*/*", "https://*/*"],
+      // });
     });
   });
 
@@ -123,76 +124,77 @@ export default defineBackground(() => {
       return;
     }
 
-    if (info.menuItemId === "savePageToCollection" && tab?.id && tab.url) {
-      const tabId = tab.id;
-      const payload = {
-        type: "saveToCollection" as const,
-        itemType: "url",
-        title: tab.title ?? new URL(tab.url).hostname,
-        content: tab.url,
-        sourceUrl: tab.url,
-      };
-      logCollectionSave("Context menu save page", { tabId, payload });
-      bindAndOpen(tabId, tab.windowId);
-      if (openSidePanelTabs.has(tabId)) {
-        logCollectionSave("Sidepanel already open; sending save page message", { tabId });
-        sendMessage("saveToCollection", { type: "url", title: payload.title, content: payload.content, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
-      } else {
-        logCollectionSave("Sidepanel not ready; queueing save page action", { tabId });
-        pendingActions.set(tabId, payload);
-      }
-      return;
-    }
+    // Collections access is temporarily disabled while the flow is revisited.
+    // if (info.menuItemId === "savePageToCollection" && tab?.id && tab.url) {
+    //   const tabId = tab.id;
+    //   const payload = {
+    //     type: "saveToCollection" as const,
+    //     itemType: "url",
+    //     title: tab.title ?? new URL(tab.url).hostname,
+    //     content: tab.url,
+    //     sourceUrl: tab.url,
+    //   };
+    //   logCollectionSave("Context menu save page", { tabId, payload });
+    //   bindAndOpen(tabId, tab.windowId);
+    //   if (openSidePanelTabs.has(tabId)) {
+    //     logCollectionSave("Sidepanel already open; sending save page message", { tabId });
+    //     sendMessage("saveToCollection", { type: "url", title: payload.title, content: payload.content, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
+    //   } else {
+    //     logCollectionSave("Sidepanel not ready; queueing save page action", { tabId });
+    //     pendingActions.set(tabId, payload);
+    //   }
+    //   return;
+    // }
 
-    if (info.menuItemId === "saveSelectionToCollection" && tab?.id && info.selectionText) {
-      const tabId = tab.id;
-      const text = info.selectionText;
-      const sourceUrl = info.pageUrl ?? tab.url ?? "";
-      const payload = {
-        type: "saveToCollection" as const,
-        itemType: "text",
-        title: text.slice(0, 60) + (text.length > 60 ? "…" : ""),
-        content: text,
-        sourceUrl,
-      };
-      logCollectionSave("Context menu save selection", { tabId, payload });
-      bindAndOpen(tabId, tab.windowId);
-      if (openSidePanelTabs.has(tabId)) {
-        logCollectionSave("Sidepanel already open; sending save selection message", { tabId });
-        sendMessage("saveToCollection", { type: "text", title: payload.title, content: payload.content, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
-      } else {
-        logCollectionSave("Sidepanel not ready; queueing save selection action", { tabId });
-        pendingActions.set(tabId, payload);
-      }
-      return;
-    }
+    // if (info.menuItemId === "saveSelectionToCollection" && tab?.id && info.selectionText) {
+    //   const tabId = tab.id;
+    //   const text = info.selectionText;
+    //   const sourceUrl = info.pageUrl ?? tab.url ?? "";
+    //   const payload = {
+    //     type: "saveToCollection" as const,
+    //     itemType: "text",
+    //     title: text.slice(0, 60) + (text.length > 60 ? "…" : ""),
+    //     content: text,
+    //     sourceUrl,
+    //   };
+    //   logCollectionSave("Context menu save selection", { tabId, payload });
+    //   bindAndOpen(tabId, tab.windowId);
+    //   if (openSidePanelTabs.has(tabId)) {
+    //     logCollectionSave("Sidepanel already open; sending save selection message", { tabId });
+    //     sendMessage("saveToCollection", { type: "text", title: payload.title, content: payload.content, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
+    //   } else {
+    //     logCollectionSave("Sidepanel not ready; queueing save selection action", { tabId });
+    //     pendingActions.set(tabId, payload);
+    //   }
+    //   return;
+    // }
 
-    if (info.menuItemId === "saveImageToCollection" && tab?.id) {
-      const imageUrl = info.srcUrl ?? "";
-      if (!imageUrl) return;
-      const tabId = tab.id;
-      const sourceUrl = info.pageUrl ?? tab.url ?? "";
-      let imageTitle = "Image";
-      try { imageTitle = new URL(imageUrl).pathname.split("/").pop() || "Image"; } catch { /* malformed URL */ }
-      const payload = {
-        type: "saveToCollection" as const,
-        itemType: "image",
-        title: imageTitle,
-        content: imageUrl,
-        thumbnail: imageUrl,
-        sourceUrl,
-      };
-      logCollectionSave("Context menu save image", { tabId, payload });
-      bindAndOpen(tabId, tab.windowId);
-      if (openSidePanelTabs.has(tabId)) {
-        logCollectionSave("Sidepanel already open; sending save image message", { tabId });
-        sendMessage("saveToCollection", { type: "image", title: payload.title, content: payload.content, thumbnail: payload.thumbnail, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
-      } else {
-        logCollectionSave("Sidepanel not ready; queueing save image action", { tabId });
-        pendingActions.set(tabId, payload);
-      }
-      return;
-    }
+    // if (info.menuItemId === "saveImageToCollection" && tab?.id) {
+    //   const imageUrl = info.srcUrl ?? "";
+    //   if (!imageUrl) return;
+    //   const tabId = tab.id;
+    //   const sourceUrl = info.pageUrl ?? tab.url ?? "";
+    //   let imageTitle = "Image";
+    //   try { imageTitle = new URL(imageUrl).pathname.split("/").pop() || "Image"; } catch { /* malformed URL */ }
+    //   const payload = {
+    //     type: "saveToCollection" as const,
+    //     itemType: "image",
+    //     title: imageTitle,
+    //     content: imageUrl,
+    //     thumbnail: imageUrl,
+    //     sourceUrl,
+    //   };
+    //   logCollectionSave("Context menu save image", { tabId, payload });
+    //   bindAndOpen(tabId, tab.windowId);
+    //   if (openSidePanelTabs.has(tabId)) {
+    //     logCollectionSave("Sidepanel already open; sending save image message", { tabId });
+    //     sendMessage("saveToCollection", { type: "image", title: payload.title, content: payload.content, thumbnail: payload.thumbnail, sourceUrl: payload.sourceUrl, forTabId: tabId }).catch(() => {});
+    //   } else {
+    //     logCollectionSave("Sidepanel not ready; queueing save image action", { tabId });
+    //     pendingActions.set(tabId, payload);
+    //   }
+    //   return;
+    // }
 
     if (info.menuItemId !== "analyseImage" || !tab?.id) return;
     const imageUrl = info.srcUrl ?? info.linkUrl ?? "";

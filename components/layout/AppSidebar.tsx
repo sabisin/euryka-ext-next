@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
+  // Folder,
   History,
   MessageSquareText,
   Settings,
@@ -50,6 +51,8 @@ const NAV_ITEMS: { key: PageKey; label: string; icon: React.ReactNode }[] = [
     label: "Annotations",
     icon: <MessageSquareText size={16} />,
   },
+  // Collections access is temporarily disabled while the flow is revisited.
+  // { key: "collections", label: "Collections", icon: <Folder size={16} /> },
 ];
 
 // Permanent narrow icon rail — always visible on the left edge.
