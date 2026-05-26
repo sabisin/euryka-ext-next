@@ -9,6 +9,7 @@ import { Button } from "../shared/Button";
 interface Props {
   collectionId: string;
   onBack: () => void;
+  onSelectItem: (item: CollectionItem) => void;
 }
 
 function groupByDate(items: CollectionItem[]): Record<string, CollectionItem[]> {
@@ -26,7 +27,7 @@ function groupByDate(items: CollectionItem[]): Record<string, CollectionItem[]> 
   }, {});
 }
 
-export function CollectionView({ collectionId, onBack }: Props) {
+export function CollectionView({ collectionId, onBack, onSelectItem }: Props) {
   const [collections] = useStorageItem(collectionsStorage);
   const [allItems, setAllItems] = useStorageItem(collectionItemsStorage);
 
@@ -98,7 +99,12 @@ export function CollectionView({ collectionId, onBack }: Props) {
                 </p>
                 <div className="flex flex-col gap-1.5">
                   {groupItems.map((item) => (
-                    <CollectionItemCard key={item.id} item={item} onDelete={handleDelete} />
+                    <CollectionItemCard
+                      key={item.id}
+                      item={item}
+                      onDelete={handleDelete}
+                      onOpen={onSelectItem}
+                    />
                   ))}
                 </div>
               </div>

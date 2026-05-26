@@ -27,6 +27,7 @@ interface UIState {
   imageResultSessionId: string | null;
   pendingAction: PendingAction | null;
   selectedCollectionId: string | null;
+  selectedCollectionItemId: string | null;
   pendingCollectionItem: PendingCollectionItem | null;
 
   setPage: (page: PageKey) => void;
@@ -43,6 +44,7 @@ interface UIState {
   setImageResult: (result: string | null, sessionId?: string | null) => void;
   setPendingAction: (action: PendingAction | null) => void;
   setSelectedCollectionId: (id: string | null) => void;
+  setSelectedCollectionItemId: (id: string | null) => void;
   setPendingCollectionItem: (item: PendingCollectionItem | null) => void;
   resetInnerViews: () => void;
 }
@@ -67,6 +69,7 @@ export const useUIStore = create<UIState>((set) => ({
   imageResultSessionId: null,
   pendingAction: null,
   selectedCollectionId: null,
+  selectedCollectionItemId: null,
   pendingCollectionItem: null,
 
   setPage: (page) => set({ currentPage: page }),
@@ -91,6 +94,7 @@ export const useUIStore = create<UIState>((set) => ({
     set({ imageResult: result, imageResultSessionId: sessionId ?? null }),
   setPendingAction: (action) => set({ pendingAction: action }),
   setSelectedCollectionId: (id) => set({ selectedCollectionId: id }),
+  setSelectedCollectionItemId: (id) => set({ selectedCollectionItemId: id }),
   setPendingCollectionItem: (item) => set({ pendingCollectionItem: item }),
   resetInnerViews: () =>
     set({
@@ -102,6 +106,7 @@ export const useUIStore = create<UIState>((set) => ({
       sparkResultSourceUrl: null,
       imageResult: null,
       selectedCollectionId: null,
+      selectedCollectionItemId: null,
       pendingCollectionItem: null,
     }),
 }));

@@ -46,6 +46,9 @@ import { SparksResult } from "../../components/sparks/SparksResult";
 import { ProspectorResult } from "../../components/sparks/ProspectorResult";
 import { HistoryList } from "../../components/history/HistoryList";
 import { SessionHeaderTitle, SessionView } from "../../components/history/SessionView";
+import { CollectionsList } from "../../components/collections/CollectionsList";
+import { CollectionView } from "../../components/collections/CollectionView";
+import { CollectionItemView } from "../../components/collections/CollectionItemView";
 import { DropzoneOverlay } from "../../components/image/DropzoneOverlay";
 import { ImageResult } from "../../components/image/ImageResult";
 import { Button } from "../../components/shared/Button";
@@ -135,6 +138,8 @@ function SidePanel() {
     imageResult,
     imageResultSessionId,
     pendingAction,
+    selectedCollectionId,
+    selectedCollectionItemId,
     setPage,
     setWorkspace,
     setBrand,
@@ -149,6 +154,8 @@ function SidePanel() {
     setImageResult,
     resetInnerViews,
     setPendingAction,
+    setSelectedCollectionId,
+    setSelectedCollectionItemId,
   } = useUIStore();
 
   const isLoggedIn = !!auth?.token;
@@ -559,6 +566,15 @@ function SidePanel() {
     setPage(page);
   };
 
+  const openCollectionItem = (item: CollectionItem) => {
+    setSelectedCollectionItemId(item.id);
+  };
+
+  const openCollectionItemFromCollection = (item: CollectionItem) => {
+    setSelectedCollectionId(item.collectionId);
+    setSelectedCollectionItemId(item.id);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {!sidebarDocked && (
@@ -702,6 +718,24 @@ function SidePanel() {
               />
             ) : (
               <AnnotationsList onSelectMarker={setSelectedMarkerId} />
+            )
+          ) : currentPage === "collections" ? (
+            selectedCollectionItemId ? (
+              <CollectionItemView
+                itemId={selectedCollectionItemId}
+                onBack={() => setSelectedCollectionItemId(null)}
+              />
+            ) : selectedCollectionId ? (
+              <CollectionView
+                collectionId={selectedCollectionId}
+                onBack={() => setSelectedCollectionId(null)}
+                onSelectItem={openCollectionItemFromCollection}
+              />
+            ) : (
+              <CollectionsList
+                onSelectCollection={setSelectedCollectionId}
+                onSelectItem={openCollectionItem}
+              />
             )
           ) : currentPage === "settings" ? (
             <div className="flex flex-col gap-px overflow-y-auto">

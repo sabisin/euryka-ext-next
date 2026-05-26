@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { formatDistanceToNow, isValid } from "date-fns";
 import { ExternalLink, GripVertical, ImageIcon, Link, MoreHorizontal, Play, Trash2, Type } from "lucide-react";
 import type { Collection, CollectionItem, CollectionItemType } from "../../lib/types";
@@ -9,6 +9,7 @@ interface Props {
   collections?: Collection[];
   onDelete: (id: string) => void;
   onMove?: (itemId: string, toCollectionId: string) => void;
+  onOpen?: (item: CollectionItem) => void;
 }
 
 function TypeIcon({ type }: { type: CollectionItemType }) {
@@ -24,9 +25,13 @@ function domain(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
-export function CollectionItemCard({ item, collections, onDelete, onMove }: Props) {
+const CLICK_DRAG_THRESHOLD = 6;
+
+export function CollectionItemCard({ item, collections, onDelete, onMove, onOpen }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const didDragRef = useRef(false);
   const date = new Date(item.createdAt);
   const ago = isValid(date) ? formatDistanceToNow(date, { addSuffix: true }) : "";
 
@@ -35,13 +40,42 @@ export function CollectionItemCard({ item, collections, onDelete, onMove }: Prop
   return (
     <div
       draggable
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onPointerDown={(e) => {
+        pointerStartRef.current = { x: e.clientX, y: e.clientY };
+        didDragRef.current = false;
+      }}
+      onPointerMove={(e) => {
+        const start = pointerStartRef.current;
+        if (!start) return;
+        const distance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+        if (distance >= CLICK_DRAG_THRESHOLD) didDragRef.current = true;
+      }}
+      onPointerUp={(e) => {
+        if (menuOpen || !onOpen || didDragRef.current) return;
+        if ((e.target as HTMLElement).closest("button,a")) return;
+        onOpen(item);
+      }}
+      onKeyDown={(e) => {
+        if (!onOpen || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen(item);
+      }}
       onDragStart={(e) => {
         setDragging(true);
+        didDragRef.current = true;
         e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      onDragEnd={() => setDragging(false)}
-      className={`group relative flex w-full cursor-grab items-center gap-3 rounded-md bg-card/70 px-3 py-2.5 text-left transition-all duration-150 hover:-translate-y-px hover:bg-card hover:shadow-md active:translate-y-0 active:scale-[0.998] active:cursor-grabbing active:bg-muted/60 ${dragging ? "opacity-40" : ""}`}
+      onDragEnd={() => {
+        setDragging(false);
+        window.setTimeout(() => {
+          didDragRef.current = false;
+          pointerStartRef.current = null;
+        }, 0);
+      }}
+      className={`group relative flex w-full cursor-grab items-center gap-3 rounded-md bg-card/70 px-3 py-2.5 text-left transition-all duration-150 hover:-translate-y-px hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:translate-y-0 active:scale-[0.998] active:cursor-grabbing active:bg-muted/60 ${dragging ? "opacity-40" : ""}`}
     >
       {/* Drag handle */}
       <GripVertical size={12} className="flex-shrink-0 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -64,9 +98,6 @@ export function CollectionItemCard({ item, collections, onDelete, onMove }: Prop
           {domain(item.sourceUrl)}
           {ago && <span className="ml-1.5 opacity-60">· {ago}</span>}
         </span>
-        {item.type === "text" && (
-          <p className="line-clamp-1 text-[10px] leading-relaxed text-muted-foreground/80">{item.content}</p>
-        )}
       </div>
 
       {/* Actions */}

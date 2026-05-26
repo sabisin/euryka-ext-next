@@ -10,6 +10,7 @@ import { Button } from "../shared/Button";
 
 interface Props {
   onSelectCollection: (id: string) => void;
+  onSelectItem: (item: CollectionItem) => void;
 }
 
 const EMOJIS = ["📁", "⭐", "🔖", "💡", "🎨", "📌", "🧠", "🔗", "📚", "🎯"];
@@ -17,7 +18,7 @@ const CUSTOM_EMOJI_LIMIT = 3;
 
 type Filter = "all" | string;
 
-export function CollectionsList({ onSelectCollection }: Props) {
+export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
   const [collections, setCollections] = useStorageItem(collectionsStorage);
   const [allItems, setAllItems] = useStorageItem(collectionItemsStorage);
   const [customEmojis, setCustomEmojis] = useStorageItem(collectionEmojiHistoryStorage);
@@ -446,6 +447,7 @@ export function CollectionsList({ onSelectCollection }: Props) {
                         collections={collectionList}
                         onDelete={handleDeleteItem}
                         onMove={handleMoveItem}
+                        onOpen={onSelectItem}
                       />
                     ))}
                   </div>
