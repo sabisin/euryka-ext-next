@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { EmojiPicker, type EmojiPickerListCategoryHeaderProps, type EmojiPickerListEmojiProps, type EmojiPickerListRowProps } from "frimousse";
-import { Bookmark, Check, ChevronDown, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Bookmark, Check, ChevronDown, ChevronRight, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import { collectionEmojiHistoryStorage, collectionsStorage, collectionItemsStorage } from "../../lib/storage";
 import type { Collection, CollectionItem } from "../../lib/types";
@@ -24,12 +24,16 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
   const [customEmojis, setCustomEmojis] = useStorageItem(collectionEmojiHistoryStorage);
 
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatePending, setIsCreatePending] = useState(false);
+  const [pendingCollection, setPendingCollection] = useState<Collection | null>(null);
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState(EMOJIS[0]);
   const [newEmojiPickerOpen, setNewEmojiPickerOpen] = useState(false);
   const [filters, setFilters] = useState<Filter[]>(["all"]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
+  const [optimisticItems, setOptimisticItems] = useState<CollectionItem[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState(EMOJIS[0]);
@@ -39,17 +43,26 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
 
   const isLoading = collections === undefined || allItems === undefined;
   const collectionList = collections ?? [];
-  const items = allItems ?? [];
+  const items = optimisticItems ?? allItems ?? [];
 
   const startCreating = () => {
     setIsCreating(true);
+    setIsCreatePending(false);
+    setPendingCollection(null);
     setNewName("");
     setNewEmoji(EMOJIS[0]);
     setNewEmojiPickerOpen(false);
     setTimeout(() => nameInputRef.current?.focus(), 50);
   };
 
-  const confirmCreate = () => {
+  const cancelCreate = () => {
+    if (isCreatePending) return;
+    setIsCreating(false);
+    setPendingCollection(null);
+  };
+
+  const confirmCreate = async () => {
+    if (isCreatePending) return;
     const name = newName.trim();
     if (!name) { setIsCreating(false); return; }
     const newCollection: Collection = {
@@ -59,9 +72,18 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
       createdAt: Date.now(),
       sharedWith: [],
     };
-    setCollections((prev) => [...(prev ?? []), newCollection]);
-    setIsCreating(false);
-    setNewName("");
+    setPendingCollection(newCollection);
+    setIsCreatePending(true);
+    try {
+      await setCollections((prev) => [...(prev ?? []), newCollection]);
+      setIsCreating(false);
+      setNewName("");
+      setPendingCollection(null);
+    } catch (error) {
+      console.error("Failed to create collection", error);
+    } finally {
+      setIsCreatePending(false);
+    }
   };
 
   const handleDeleteCollection = (collectionId: string) => {
@@ -100,11 +122,32 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
   };
 
   const handleDeleteItem = (itemId: string) => {
+    setOptimisticItems(null);
     setAllItems((prev) => (prev ?? []).filter((i) => i.id !== itemId));
   };
 
   const handleMoveItem = (itemId: string, toCollectionId: string) => {
-    setAllItems((prev) => (prev ?? []).map((i) => i.id === itemId ? { ...i, collectionId: toCollectionId } : i));
+    const previousItems = items;
+    const itemToMove = previousItems.find((item) => item.id === itemId);
+    if (!itemToMove || itemToMove.collectionId === toCollectionId) return;
+
+    const nextItems = previousItems.map((item) =>
+      item.id === itemId ? { ...item, collectionId: toCollectionId } : item,
+    );
+
+    setOptimisticItems(nextItems);
+
+    void setAllItems(nextItems)
+      .then(() => {
+        setOptimisticItems((current) => (current === nextItems ? null : current));
+      })
+      .catch((error) => {
+        console.error("Failed to move collection item", error);
+        setOptimisticItems(previousItems);
+        void setAllItems(previousItems).finally(() => {
+          setOptimisticItems((current) => (current === previousItems ? null : current));
+        });
+      });
   };
 
   const shareCollection = (collectionId: string, email: string) => {
@@ -163,6 +206,31 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
 
   const filterOptions: Filter[] = ["all", ...collectionList.map((c) => c.id)];
 
+  const toggleFilter = (key: Filter) => {
+    if (key === "all") {
+      setFilters(["all"]);
+      setFilterOpen(false);
+      return;
+    }
+
+    setFilters((current) => {
+      const withoutAll = current.filter((item) => item !== "all");
+      const next = withoutAll.includes(key)
+        ? withoutAll.filter((item) => item !== key)
+        : [...withoutAll, key];
+      return next.length > 0 ? next : ["all"];
+    });
+  };
+
+  const toggleSection = (sectionId: string) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
+
   const rememberCustomEmoji = (emoji: string) => {
     if (EMOJIS.includes(emoji)) return;
     void setCustomEmojis((current) => [
@@ -179,22 +247,6 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
   const selectEditEmoji = (emoji: string) => {
     setEditEmoji(emoji);
     rememberCustomEmoji(emoji);
-  };
-
-  const toggleFilter = (key: Filter) => {
-    if (key === "all") {
-      setFilters(["all"]);
-      setFilterOpen(false);
-      return;
-    }
-
-    setFilters((current) => {
-      const withoutAll = current.filter((item) => item !== "all");
-      const next = withoutAll.includes(key)
-        ? withoutAll.filter((item) => item !== key)
-        : [...withoutAll, key];
-      return next.length > 0 ? next : ["all"];
-    });
   };
 
   return (
@@ -254,7 +306,7 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {/* Inline create form */}
-        {isCreating && (
+        {isCreating && !isCreatePending && (
           <div className="border-b border-border px-4 py-3">
             <div className="mb-2 flex flex-wrap gap-1">
               {[...EMOJIS, ...(customEmojis ?? [])].map((e) => (
@@ -282,15 +334,15 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") confirmCreate(); if (e.key === "Escape") setIsCreating(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void confirmCreate(); if (e.key === "Escape") cancelCreate(); }}
               placeholder="Collection name…"
               className="w-full rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
             />
             <div className="mt-2 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setIsCreating(false)} className="h-7">
+              <Button variant="ghost" size="sm" onClick={cancelCreate} className="h-7">
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" onClick={confirmCreate} className="h-7">
+              <Button variant="primary" size="sm" onClick={() => void confirmCreate()} className="h-7">
                 Create
               </Button>
             </div>
@@ -312,6 +364,7 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
               const isDropTarget = dropTarget === sectionKey;
               const collection = collectionList.find((c) => c.id === section.id);
               const isEditing = section.id !== "" && editingId === section.id;
+              const isCollapsed = collapsedSections.has(section.id);
               return (
               <div
                 key={sectionKey}
@@ -392,11 +445,21 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 px-4 py-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(section.id)}
+                      aria-expanded={!isCollapsed}
+                      className="flex min-w-0 items-center gap-1.5 rounded-sm text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight size={12} className="shrink-0" />
+                      ) : (
+                        <ChevronDown size={12} className="shrink-0" />
+                      )}
                       {section.emoji && <span className="text-sm normal-case">{section.emoji}</span>}
-                      {section.label}
-                      <span className="font-normal opacity-60">({section.items.length})</span>
-                    </span>
+                      <span className="truncate">{section.label}</span>
+                      <span className="shrink-0 font-normal opacity-60">({section.items.length})</span>
+                    </button>
 
                     <div className="ml-auto flex items-center gap-2">
                       {section.id && collection && (
@@ -436,7 +499,7 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
                   </div>
                 )}
 
-                {section.items.length === 0 ? (
+                {isCollapsed ? null : section.items.length === 0 ? (
                   <p className="px-4 pb-3 text-[11px] italic text-muted-foreground">No items yet.</p>
                 ) : (
                   <div className="flex flex-col gap-2 px-4 pb-4">
@@ -454,6 +517,11 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
                 )}
               </div>
             );})}
+            {isCreatePending && pendingCollection && (
+              <div className="px-4 py-3">
+                <PendingCollectionSkeleton collection={pendingCollection} />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -483,6 +551,27 @@ function CollectionsLoadingState() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PendingCollectionSkeleton({ collection }: { collection: Collection }) {
+  return (
+    <div aria-live="polite">
+      <div className="mb-3 flex items-center gap-2">
+        {collection.emoji && <span className="text-sm">{collection.emoji}</span>}
+        <span className="truncate text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {collection.name}
+        </span>
+        <span className="text-[10px] text-muted-foreground/60">(0)</span>
+      </div>
+      <div className="flex items-center gap-3 rounded-md bg-card/70 px-3 py-2.5">
+        <div className="h-8 w-8 shrink-0 animate-pulse rounded-md bg-muted" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-3/5 animate-pulse rounded bg-muted/80" />
+        </div>
+      </div>
     </div>
   );
 }
