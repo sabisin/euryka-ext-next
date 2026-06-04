@@ -13,10 +13,15 @@ interface Props {
   isStreaming: boolean;
   apiKeyAvailable: boolean;
   chatId: string | null;
+  includePageContent: boolean;
+  includeSelectedText: boolean;
+  chatContextStatus: string | null;
   onSubmit: (message: string) => void;
   onStop: () => void;
   onOpenSettings: () => void;
   onOpenThread: () => void;
+  onIncludePageContentChange: (checked: boolean) => void;
+  onIncludeSelectedTextChange: (checked: boolean) => void;
 }
 
 export function ChatResult({
@@ -26,10 +31,15 @@ export function ChatResult({
   isStreaming,
   apiKeyAvailable,
   chatId,
+  includePageContent,
+  includeSelectedText,
+  chatContextStatus,
   onSubmit,
   onStop,
   onOpenSettings,
   onOpenThread,
+  onIncludePageContentChange,
+  onIncludeSelectedTextChange,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const latestAssistantContent = useMemo(
@@ -160,8 +170,13 @@ export function ChatResult({
           compact
           apiKeyAvailable={apiKeyAvailable}
           isStreaming={isStreaming}
+          includePageContent={includePageContent}
+          includeSelectedText={includeSelectedText}
+          contextStatus={chatContextStatus}
           onSubmit={onSubmit}
           onOpenSettings={onOpenSettings}
+          onIncludePageContentChange={onIncludePageContentChange}
+          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
       </div>
     </div>

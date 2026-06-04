@@ -6,23 +6,33 @@ interface Props {
   apiKeyAvailable: boolean;
   isStreaming?: boolean;
   compact?: boolean;
+  includePageContent?: boolean;
+  includeSelectedText?: boolean;
+  contextStatus?: string | null;
   onSubmit: (message: string) => void;
   onOpenSettings: () => void;
+  onIncludePageContentChange?: (checked: boolean) => void;
+  onIncludeSelectedTextChange?: (checked: boolean) => void;
 }
 
 export function ChatBox({
   apiKeyAvailable,
   isStreaming = false,
   compact = false,
+  includePageContent = false,
+  includeSelectedText = false,
+  contextStatus = null,
   onSubmit,
   onOpenSettings,
+  onIncludePageContentChange,
+  onIncludeSelectedTextChange,
 }: Props) {
   const [message, setMessage] = useState("");
   const trimmed = message.trim();
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!trimmed || !apiKeyAvailable || isStreaming) return;
+    if (!trimmed || isStreaming) return;
     onSubmit(trimmed);
     setMessage("");
   };
@@ -43,6 +53,29 @@ export function ChatBox({
         </div>
       )}
 
+      <div className="flex flex-wrap gap-3">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={includePageContent}
+            onChange={(event) => onIncludePageContentChange?.(event.target.checked)}
+            disabled={isStreaming}
+            className="h-3.5 w-3.5 rounded border-border"
+          />
+          Page content
+        </label>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={includeSelectedText}
+            onChange={(event) => onIncludeSelectedTextChange?.(event.target.checked)}
+            disabled={isStreaming}
+            className="h-3.5 w-3.5 rounded border-border"
+          />
+          Highlighted text
+        </label>
+      </div>
+
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <textarea
           value={message}
@@ -53,13 +86,9 @@ export function ChatBox({
               event.currentTarget.form?.requestSubmit();
             }
           }}
-          disabled={!apiKeyAvailable || isStreaming}
+          disabled={isStreaming}
           rows={compact ? 1 : 2}
-          placeholder={
-            apiKeyAvailable
-              ? "Ask Euryka..."
-              : "Add an API key in Settings to enable chat."
-          }
+          placeholder="Ask Euryka..."
           className="ek-scroll min-h-10 flex-1 resize-none rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <Button
@@ -67,11 +96,17 @@ export function ChatBox({
           variant="primary"
           size="icon-lg"
           title="Send"
-          disabled={!trimmed || !apiKeyAvailable || isStreaming}
+          disabled={!trimmed || isStreaming}
         >
           <Send size={15} />
         </Button>
       </form>
+
+      {contextStatus && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {contextStatus}
+        </p>
+      )}
     </section>
   );
 }

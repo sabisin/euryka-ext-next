@@ -5,7 +5,6 @@ import type { Brand, Project, Spark } from "../../lib/types";
 import { hexToRgba } from "../../lib/utils";
 import { IconWrapper } from "../shared/IconWrapper";
 import { ChatBox } from "./ChatBox";
-import { ChromePromptTestBox } from "./ChromePromptTestBox";
 import { ContextSelector } from "./ContextSelector";
 import { SparkCarousel } from "./SparkCarousel";
 
@@ -18,7 +17,6 @@ interface Props {
   projects: Project[];
   lastFive: string[];
   currentUrl?: string | null;
-  currentTabId?: number | null;
   prospector?: {
     visible: boolean;
     title: string;
@@ -28,9 +26,14 @@ interface Props {
     onClick: () => void;
   };
   chatApiKeyAvailable: boolean;
+  includePageContent: boolean;
+  includeSelectedText: boolean;
+  chatContextStatus: string | null;
   onUseSpark: (spark: Spark) => void;
   onStartChat: (message: string) => void;
   onOpenChatSettings: () => void;
+  onIncludePageContentChange: (checked: boolean) => void;
+  onIncludeSelectedTextChange: (checked: boolean) => void;
   onSelectBrand: (id: string | null) => void;
   onSelectProject: (id: string | null) => void;
 }
@@ -42,12 +45,16 @@ export function SparksGallery({
   projects,
   lastFive,
   currentUrl,
-  currentTabId = null,
   prospector,
   chatApiKeyAvailable,
+  includePageContent,
+  includeSelectedText,
+  chatContextStatus,
   onUseSpark,
   onStartChat,
   onOpenChatSettings,
+  onIncludePageContentChange,
+  onIncludeSelectedTextChange,
   onSelectBrand,
   onSelectProject,
 }: Props) {
@@ -183,11 +190,14 @@ export function SparksGallery({
 
         <ChatBox
           apiKeyAvailable={chatApiKeyAvailable}
+          includePageContent={includePageContent}
+          includeSelectedText={includeSelectedText}
+          contextStatus={chatContextStatus}
           onSubmit={onStartChat}
           onOpenSettings={onOpenChatSettings}
+          onIncludePageContentChange={onIncludePageContentChange}
+          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
-
-        <ChromePromptTestBox tabId={currentTabId} />
       </div>
     </div>
   );

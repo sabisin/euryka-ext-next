@@ -85,6 +85,35 @@ const THIS_TAB_ID = (() => {
   return v ? Number(v) : null;
 })();
 
+type PromptAvailability = "unavailable" | "downloadable" | "downloading" | "available";
+
+interface LanguageModelSession {
+  prompt: (input: string) => Promise<string>;
+  destroy?: () => void;
+}
+
+interface LanguageModelApi {
+  availability: (options?: unknown) => Promise<PromptAvailability>;
+  create: (options?: unknown) => Promise<LanguageModelSession>;
+}
+
+declare global {
+  interface Window {
+    LanguageModel?: LanguageModelApi;
+  }
+}
+
+const CHROME_CHAT_SESSION_OPTIONS = {
+  expectedInputs: [{ type: "text", languages: ["en"] }],
+  expectedOutputs: [{ type: "text", languages: ["en"] }],
+};
+
+interface ChatPromptContext {
+  pageUrl: string;
+  pageContent: string;
+  selectedText: string;
+}
+
 interface ExtensionPort {
   postMessage: (message: unknown) => void;
 }
@@ -172,6 +201,10 @@ function SidePanel() {
   const isLoggedIn = !!auth?.token;
   const hasChatApiKey = Boolean(chatApiKey?.trim());
   const chatAbortRef = useRef<AbortController | null>(null);
+  const chatRunIdRef = useRef(0);
+  const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
+  const [includeChatSelectedText, setIncludeChatSelectedText] = useState(false);
+  const [chatContextStatus, setChatContextStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const syncSidebarSize = () => {
@@ -458,8 +491,58 @@ function SidePanel() {
     }
   };
 
+  const fetchChatPromptContext = async (): Promise<ChatPromptContext | null> => {
+    const needsPageContent = includeChatPageContent;
+    const needsSelectedText = includeChatSelectedText;
+
+    if (!needsPageContent && !needsSelectedText) {
+      setChatContextStatus(null);
+      return { pageUrl: currentTabUrl ?? "", pageContent: "", selectedText: "" };
+    }
+
+    if (THIS_TAB_ID === null) {
+      setChatContextStatus(null);
+      setChatError("No active tab is attached to this sidepanel.");
+      return null;
+    }
+
+    const [tabUrl, page, selection] = await Promise.all([
+      sendMessage("getTabUrl", { tabId: THIS_TAB_ID }).catch(() => ({ url: currentTabUrl ?? "" })),
+      needsPageContent
+        ? sendMessage("extractText", undefined, THIS_TAB_ID).catch(() => null)
+        : Promise.resolve(null),
+      needsSelectedText
+        ? sendMessage("getSelectedText", undefined, THIS_TAB_ID).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    const context: ChatPromptContext = {
+      pageUrl: tabUrl.url.trim(),
+      pageContent: page?.text.trim() ?? "",
+      selectedText: selection?.text.trim() ?? "",
+    };
+
+    if (needsPageContent && !context.pageContent) {
+      setChatContextStatus("Page content unavailable.");
+      setChatError("Page content was requested, but no page text is available.");
+      return null;
+    }
+    if (needsSelectedText && !context.selectedText) {
+      setChatContextStatus("Highlighted text unavailable.");
+      setChatError("Highlighted text was requested, but no current selection is available.");
+      return null;
+    }
+
+    const included = [
+      needsPageContent ? `page content: ${context.pageContent.length} chars` : null,
+      needsSelectedText ? `highlight: ${context.selectedText.length} chars` : null,
+    ].filter(Boolean);
+    setChatContextStatus(`Context included (${included.join(", ")}).`);
+    return context;
+  };
+
   const handleStartChat = async (message: string, continueConversation = showChatResult) => {
-    const apiKey = chatApiKey?.trim();
+    const runId = ++chatRunIdRef.current;
 
     setPage("sparks");
     setSelectedImageUrl(null);
@@ -474,16 +557,13 @@ function SidePanel() {
       setChatId(null);
     }
 
-    if (!apiKey) {
-      setChatMessages([]);
-      setChatId(null);
-      setChatError("Add your Euryka API key in Settings to use chat.");
-      return;
-    }
-
     if (chatAbortRef.current) {
       chatAbortRef.current.abort();
+      chatAbortRef.current = null;
     }
+
+    const context = await fetchChatPromptContext();
+    if (!context) return;
 
     const userMessage: ChatUiMessage = {
       id: crypto.randomUUID(),
@@ -505,6 +585,106 @@ function SidePanel() {
     setChatMessages([...history, assistantMessage]);
     setChatStreaming(true);
 
+    try {
+      const usedChrome = await runChromeChat({
+        assistantMessageId: assistantMessage.id,
+        context,
+        history,
+        runId,
+      });
+
+      if (usedChrome) return;
+
+      await runBackendChat({
+        activeChatId,
+        assistantMessageId: assistantMessage.id,
+        context,
+        continueConversation,
+        history,
+        userMessage,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      setChatError(
+        error instanceof Error ? error.message : "We couldn't complete the chat request."
+      );
+    } finally {
+      if (chatRunIdRef.current === runId) {
+        setChatStreaming(false);
+      }
+    }
+  };
+
+  const runChromeChat = async ({
+    assistantMessageId,
+    context,
+    history,
+    runId,
+  }: {
+    assistantMessageId: string;
+    context: ChatPromptContext;
+    history: ChatUiMessage[];
+    runId: number;
+  }): Promise<boolean> => {
+    const languageModel = window.LanguageModel;
+    if (!languageModel) {
+      setChatContextStatus("Chrome AI unavailable; using Euryka.");
+      return false;
+    }
+
+    const availability = await languageModel.availability(CHROME_CHAT_SESSION_OPTIONS);
+    if (availability === "unavailable") {
+      setChatContextStatus("Chrome AI unavailable; using Euryka.");
+      return false;
+    }
+
+    setChatContextStatus(
+      availability === "available" ? "Using Chrome AI." : "Preparing Chrome AI model."
+    );
+
+    let session: LanguageModelSession | null = null;
+    try {
+      session = await languageModel.create(CHROME_CHAT_SESSION_OPTIONS);
+      const response = await session.prompt(buildChromeChatPrompt(history, context));
+      if (chatRunIdRef.current !== runId) return true;
+      setChatId(null);
+      setChatMessages((current) =>
+        current.map((item) =>
+          item.id === assistantMessageId ? { ...item, content: response } : item
+        )
+      );
+      setChatContextStatus("Answered with Chrome AI.");
+      return true;
+    } finally {
+      session?.destroy?.();
+    }
+  };
+
+  const runBackendChat = async ({
+    activeChatId,
+    assistantMessageId,
+    context,
+    continueConversation,
+    history,
+    userMessage,
+  }: {
+    activeChatId: string | null;
+    assistantMessageId: string;
+    context: ChatPromptContext;
+    continueConversation: boolean;
+    history: ChatUiMessage[];
+    userMessage: ChatUiMessage;
+  }) => {
+    const apiKey = chatApiKey?.trim();
+    if (!apiKey) {
+      setChatMessages([]);
+      setChatId(null);
+      setChatError("Add your Euryka API key in Settings to use chat.");
+      return;
+    }
+
     const controller = new AbortController();
     chatAbortRef.current = controller;
 
@@ -514,7 +694,7 @@ function SidePanel() {
         apiKey,
         {
           ...(activeChatId ? { chatId: activeChatId } : {}),
-          messages: toChatApiMessages(requestMessages),
+          messages: toChatApiMessages(requestMessages, context),
           brandId: selectedBrandId ?? undefined,
           projectId: selectedProjectId ?? undefined,
           timestampString: new Date().toString(),
@@ -523,7 +703,7 @@ function SidePanel() {
           onTextDelta: (delta) => {
             setChatMessages((current) =>
               current.map((item) =>
-                item.id === assistantMessage.id ? { ...item, content: item.content + delta } : item
+                item.id === assistantMessageId ? { ...item, content: item.content + delta } : item
               )
             );
           },
@@ -541,22 +721,16 @@ function SidePanel() {
       if (response.chatId) {
         setChatId(response.chatId);
       }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      setChatError(
-        error instanceof Error ? error.message : "We couldn't complete the chat request."
-      );
+      setChatContextStatus("Answered with Euryka.");
     } finally {
       if (chatAbortRef.current === controller) {
         chatAbortRef.current = null;
       }
-      setChatStreaming(false);
     }
   };
 
   const handleStopChat = () => {
+    chatRunIdRef.current += 1;
     chatAbortRef.current?.abort();
     chatAbortRef.current = null;
     setChatStreaming(false);
@@ -831,10 +1005,15 @@ function SidePanel() {
                 isStreaming={isChatStreaming}
                 apiKeyAvailable={hasChatApiKey}
                 chatId={chatId}
+                includePageContent={includeChatPageContent}
+                includeSelectedText={includeChatSelectedText}
+                chatContextStatus={chatContextStatus}
                 onSubmit={(message) => handleStartChat(message, true)}
                 onStop={handleStopChat}
                 onOpenSettings={openChatSettings}
                 onOpenThread={handleOpenChatThread}
+                onIncludePageContentChange={setIncludeChatPageContent}
+                onIncludeSelectedTextChange={setIncludeChatSelectedText}
               />
             ) : showSparkResult && prospectorResult ? (
               <ProspectorResult
@@ -877,8 +1056,10 @@ function SidePanel() {
                 projects={projects}
                 lastFive={prefs?.lastFive ?? []}
                 currentUrl={currentTabUrl}
-                currentTabId={THIS_TAB_ID}
                 chatApiKeyAvailable={hasChatApiKey}
+                includePageContent={includeChatPageContent}
+                includeSelectedText={includeChatSelectedText}
+                chatContextStatus={chatContextStatus}
                 prospector={{
                   visible: prospectorStatus.visible,
                   title: LINKEDIN_PROSPECTOR_SPARK.title,
@@ -890,6 +1071,8 @@ function SidePanel() {
                 onUseSpark={handleUseSpark}
                 onStartChat={(message) => handleStartChat(message, false)}
                 onOpenChatSettings={openChatSettings}
+                onIncludePageContentChange={setIncludeChatPageContent}
+                onIncludeSelectedTextChange={setIncludeChatSelectedText}
                 onSelectBrand={setBrand}
                 onSelectProject={setProject}
               />
@@ -1050,12 +1233,46 @@ async function getOrCreateDefaultCollectionId(): Promise<string> {
   return collection.id;
 }
 
-function toChatApiMessages(messages: ChatUiMessage[]): ChatMessage[] {
-  return messages.map((message) => ({
+function toChatApiMessages(
+  messages: ChatUiMessage[],
+  context?: ChatPromptContext
+): ChatMessage[] {
+  const contextText = context ? buildContextText(context) : "";
+  const apiMessages: ChatMessage[] = messages.map((message) => ({
     id: message.id,
     role: message.role,
     parts: [{ type: "text", text: message.content }],
   }));
+
+  if (!contextText) return apiMessages;
+  return [
+    {
+      role: "system",
+      parts: [{ type: "text", text: contextText }],
+    },
+    ...apiMessages,
+  ];
+}
+
+function buildChromeChatPrompt(messages: ChatUiMessage[], context: ChatPromptContext): string {
+  const parts = [];
+  const contextText = buildContextText(context);
+  if (contextText) parts.push(contextText);
+
+  const history = messages
+    .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content}`)
+    .join("\n\n");
+  if (history) parts.push(`Conversation:\n${history}`);
+
+  return parts.join("\n\n---\n\n");
+}
+
+function buildContextText(context: ChatPromptContext): string {
+  const parts = [];
+  if (context.pageUrl) parts.push(`Page URL:\n${context.pageUrl}`);
+  if (context.pageContent) parts.push(`Page content:\n${context.pageContent}`);
+  if (context.selectedText) parts.push(`Highlighted text:\n${context.selectedText}`);
+  return parts.join("\n\n");
 }
 
 export default function App() {
