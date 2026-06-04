@@ -69,6 +69,7 @@ const DEFAULT_USER_PREFS: UserPrefs = {
   lastUsedSpark: null,
   lastFive: [],
 };
+const DEBUG = import.meta.env.WXT_DEBUG === "true";
 const DEFAULT_COLLECTION_NAME = "Saved items";
 let collectionSaveQueue = Promise.resolve();
 
@@ -205,6 +206,8 @@ function SidePanel() {
   const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
   const [includeChatSelectedText, setIncludeChatSelectedText] = useState(false);
   const [chatContextStatus, setChatContextStatus] = useState<string | null>(null);
+  const [chatProviderDebugStatus, setChatProviderDebugStatus] =
+    useState<string>("Google first");
 
   useEffect(() => {
     const syncSidebarSize = () => {
@@ -630,18 +633,18 @@ function SidePanel() {
   }): Promise<boolean> => {
     const languageModel = window.LanguageModel;
     if (!languageModel) {
-      setChatContextStatus("Chrome AI unavailable; using Euryka.");
+      setChatProviderDebugStatus("Euryka");
       return false;
     }
 
     const availability = await languageModel.availability(CHROME_CHAT_SESSION_OPTIONS);
     if (availability === "unavailable") {
-      setChatContextStatus("Chrome AI unavailable; using Euryka.");
+      setChatProviderDebugStatus("Euryka");
       return false;
     }
 
-    setChatContextStatus(
-      availability === "available" ? "Using Chrome AI." : "Preparing Chrome AI model."
+    setChatProviderDebugStatus(
+      availability === "available" ? "Google Chrome AI" : "Google preparing"
     );
 
     let session: LanguageModelSession | null = null;
@@ -655,7 +658,7 @@ function SidePanel() {
           item.id === assistantMessageId ? { ...item, content: response } : item
         )
       );
-      setChatContextStatus("Answered with Chrome AI.");
+      setChatProviderDebugStatus("Google Chrome AI");
       return true;
     } finally {
       session?.destroy?.();
@@ -721,7 +724,7 @@ function SidePanel() {
       if (response.chatId) {
         setChatId(response.chatId);
       }
-      setChatContextStatus("Answered with Euryka.");
+      setChatProviderDebugStatus("Euryka");
     } finally {
       if (chatAbortRef.current === controller) {
         chatAbortRef.current = null;
@@ -1008,6 +1011,7 @@ function SidePanel() {
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
                 chatContextStatus={chatContextStatus}
+                chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
                 onSubmit={(message) => handleStartChat(message, true)}
                 onStop={handleStopChat}
                 onOpenSettings={openChatSettings}
@@ -1060,6 +1064,7 @@ function SidePanel() {
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
                 chatContextStatus={chatContextStatus}
+                chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
                 prospector={{
                   visible: prospectorStatus.visible,
                   title: LINKEDIN_PROSPECTOR_SPARK.title,

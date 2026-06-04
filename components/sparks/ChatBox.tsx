@@ -9,6 +9,7 @@ interface Props {
   includePageContent?: boolean;
   includeSelectedText?: boolean;
   contextStatus?: string | null;
+  providerStatus?: string | null;
   onSubmit: (message: string) => void;
   onOpenSettings: () => void;
   onIncludePageContentChange?: (checked: boolean) => void;
@@ -22,6 +23,7 @@ export function ChatBox({
   includePageContent = false,
   includeSelectedText = false,
   contextStatus = null,
+  providerStatus = null,
   onSubmit,
   onOpenSettings,
   onIncludePageContentChange,
@@ -38,20 +40,27 @@ export function ChatBox({
   };
 
   return (
-    <section className={compact ? "flex flex-col gap-2" : "flex flex-col gap-2.5 border-t border-border pt-5"}>
+    <section className={compact ? "flex flex-col gap-2" : "flex flex-col gap-2.5 pt-2"}>
       {!compact && (
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Chat
-          </h3>
-          {!apiKeyAvailable && (
-            <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-              <KeyRound size={13} />
-              API key
-            </Button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Chat
+            </h3>
+            {providerStatus && <ProviderBadge label={providerStatus} />}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {!apiKeyAvailable && (
+              <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+                <KeyRound size={13} />
+                API key
+              </Button>
+            )}
+          </div>
         </div>
       )}
+
+      {compact && providerStatus && <ProviderBadge label={providerStatus} />}
 
       <div className="flex flex-wrap gap-3">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -108,5 +117,13 @@ export function ChatBox({
         </p>
       )}
     </section>
+  );
+}
+
+function ProviderBadge({ label }: { label: string }) {
+  return (
+    <span className="max-w-[180px] truncate rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {label}
+    </span>
   );
 }

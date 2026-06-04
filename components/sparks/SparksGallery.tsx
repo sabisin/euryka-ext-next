@@ -29,6 +29,7 @@ interface Props {
   includePageContent: boolean;
   includeSelectedText: boolean;
   chatContextStatus: string | null;
+  chatProviderStatus: string | null;
   onUseSpark: (spark: Spark) => void;
   onStartChat: (message: string) => void;
   onOpenChatSettings: () => void;
@@ -50,6 +51,7 @@ export function SparksGallery({
   includePageContent,
   includeSelectedText,
   chatContextStatus,
+  chatProviderStatus,
   onUseSpark,
   onStartChat,
   onOpenChatSettings,
@@ -193,6 +195,7 @@ export function SparksGallery({
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
           contextStatus={chatContextStatus}
+          providerStatus={chatProviderStatus}
           onSubmit={onStartChat}
           onOpenSettings={onOpenChatSettings}
           onIncludePageContentChange={onIncludePageContentChange}

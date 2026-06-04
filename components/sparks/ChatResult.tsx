@@ -16,6 +16,7 @@ interface Props {
   includePageContent: boolean;
   includeSelectedText: boolean;
   chatContextStatus: string | null;
+  chatProviderStatus: string | null;
   onSubmit: (message: string) => void;
   onStop: () => void;
   onOpenSettings: () => void;
@@ -34,6 +35,7 @@ export function ChatResult({
   includePageContent,
   includeSelectedText,
   chatContextStatus,
+  chatProviderStatus,
   onSubmit,
   onStop,
   onOpenSettings,
@@ -173,6 +175,7 @@ export function ChatResult({
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
           contextStatus={chatContextStatus}
+          providerStatus={chatProviderStatus}
           onSubmit={onSubmit}
           onOpenSettings={onOpenSettings}
           onIncludePageContentChange={onIncludePageContentChange}
