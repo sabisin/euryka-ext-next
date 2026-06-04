@@ -121,6 +121,16 @@ interface ChatPromptContext {
   selectedText: string;
 }
 
+interface ChatContextCounts {
+  pageContent: number | null;
+  selectedText: number | null;
+}
+
+interface ChatContextLimitState {
+  exceedsPageContentLimit: boolean;
+  exceedsSelectedTextLimit: boolean;
+}
+
 interface ExtensionPort {
   postMessage: (message: unknown) => void;
 }
@@ -211,7 +221,12 @@ function SidePanel() {
   const chatRunIdRef = useRef(0);
   const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
   const [includeChatSelectedText, setIncludeChatSelectedText] = useState(false);
-  const [chatContextStatus, setChatContextStatus] = useState<string | null>(null);
+  const [chatContextCounts, setChatContextCounts] = useState<ChatContextCounts>({
+    pageContent: null,
+    selectedText: null,
+  });
+  const [chatUserNotice, setChatUserNotice] = useState<string | null>(null);
+  const [chatUserNoticeTitle, setChatUserNoticeTitle] = useState<string | null>(null);
   const [chatProviderDebugStatus, setChatProviderDebugStatus] =
     useState<string>("Google first");
 
@@ -500,17 +515,33 @@ function SidePanel() {
     }
   };
 
+  const updateChatContextLimitNotice = (counts: ChatContextCounts, trimmed: boolean) => {
+    const limitState = getChatContextLimitState(counts);
+    if (!limitState.exceedsPageContentLimit && !limitState.exceedsSelectedTextLimit) {
+      setChatUserNotice(null);
+      setChatUserNoticeTitle(null);
+      return;
+    }
+
+    setChatUserNotice(
+      trimmed
+        ? "Number of chars exceeds model context. Content was trimmed."
+        : "Number of chars exceeds model context. Content will be trimmed."
+    );
+    setChatUserNoticeTitle(null);
+  };
+
   const fetchChatPromptContext = async (): Promise<ChatPromptContext | null> => {
     const needsPageContent = includeChatPageContent;
     const needsSelectedText = includeChatSelectedText;
 
     if (!needsPageContent && !needsSelectedText) {
-      setChatContextStatus(null);
+      setChatContextCounts({ pageContent: null, selectedText: null });
       return { pageUrl: currentTabUrl ?? "", pageContent: "", selectedText: "" };
     }
 
     if (THIS_TAB_ID === null) {
-      setChatContextStatus(null);
+      setChatContextCounts({ pageContent: null, selectedText: null });
       setChatError("No active tab is attached to this sidepanel.");
       return null;
     }
@@ -532,22 +563,83 @@ function SidePanel() {
     };
 
     if (needsPageContent && !context.pageContent) {
-      setChatContextStatus("Page content unavailable.");
+      setChatContextCounts({
+        pageContent: context.pageContent.length,
+        selectedText: needsSelectedText ? context.selectedText.length : null,
+      });
       setChatError("Page content was requested, but no page text is available.");
       return null;
     }
     if (needsSelectedText && !context.selectedText) {
-      setChatContextStatus("Highlighted text unavailable.");
+      setChatContextCounts({
+        pageContent: needsPageContent ? context.pageContent.length : null,
+        selectedText: context.selectedText.length,
+      });
       setChatError("Highlighted text was requested, but no current selection is available.");
       return null;
     }
 
-    const included = [
-      needsPageContent ? `page content: ${context.pageContent.length} chars` : null,
-      needsSelectedText ? `highlight: ${context.selectedText.length} chars` : null,
-    ].filter(Boolean);
-    setChatContextStatus(`Context included (${included.join(", ")}).`);
+    const counts = {
+      pageContent: needsPageContent ? context.pageContent.length : null,
+      selectedText: needsSelectedText ? context.selectedText.length : null,
+    };
+    setChatContextCounts(counts);
+    updateChatContextLimitNotice(counts, false);
     return context;
+  };
+
+  const refreshChatContextPreview = async (
+    needsPageContent: boolean,
+    needsSelectedText: boolean
+  ) => {
+    setChatUserNotice(null);
+    setChatUserNoticeTitle(null);
+
+    if (!needsPageContent && !needsSelectedText) {
+      setChatContextCounts({ pageContent: null, selectedText: null });
+      return;
+    }
+
+    if (THIS_TAB_ID === null) {
+      setChatContextCounts({ pageContent: null, selectedText: null });
+      return;
+    }
+
+    const [page, selection] = await Promise.all([
+      needsPageContent
+        ? sendMessage("extractText", undefined, THIS_TAB_ID).catch(() => null)
+        : Promise.resolve(null),
+      needsSelectedText
+        ? sendMessage("getSelectedText", undefined, THIS_TAB_ID).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    const counts = {
+      pageContent: needsPageContent ? (page?.text.trim().length ?? 0) : null,
+      selectedText: needsSelectedText ? (selection?.text.trim().length ?? 0) : null,
+    };
+    setChatContextCounts(counts);
+    updateChatContextLimitNotice(counts, false);
+  };
+
+  const handleIncludeChatPageContentChange = (checked: boolean) => {
+    setIncludeChatPageContent(checked);
+    if (checked) {
+      setIncludeChatSelectedText(false);
+      void refreshChatContextPreview(true, false);
+      return;
+    }
+    void refreshChatContextPreview(false, includeChatSelectedText);
+  };
+
+  const handleIncludeChatSelectedTextChange = (checked: boolean) => {
+    setIncludeChatSelectedText(checked);
+    if (checked) {
+      setIncludeChatPageContent(false);
+      void refreshChatContextPreview(false, true);
+      return;
+    }
+    void refreshChatContextPreview(includeChatPageContent, false);
   };
 
   const handleStartChat = async (message: string, continueConversation = showChatResult) => {
@@ -560,6 +652,8 @@ function SidePanel() {
     setShowChatResult(true);
     setChatError(null);
     setChatSources([]);
+    setChatUserNotice(null);
+    setChatUserNoticeTitle(null);
     const activeChatId = continueConversation ? chatId : null;
 
     if (!continueConversation) {
@@ -656,18 +750,26 @@ function SidePanel() {
     let session: LanguageModelSession | null = null;
     try {
       session = await languageModel.create(CHROME_CHAT_SESSION_OPTIONS);
+      const initialPrompt = buildChromeChatPrompt(history, context);
+      setChatUserNotice(initialPrompt.userNotice);
+      setChatUserNoticeTitle(initialPrompt.userNoticeTitle);
+
       let response: string;
       try {
-        response = await session.prompt(buildChromeChatPrompt(history, context));
+        response = await session.prompt(initialPrompt.prompt);
       } catch (error) {
         if (!isInputTooLargeError(error)) throw error;
-        response = await session.prompt(
-          buildChromeChatPrompt(history, context, {
-            pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
-            selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
-            historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
-          })
+        const retryPrompt = buildChromeChatPrompt(history, context, {
+          pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
+          selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
+          historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
+        });
+        setChatUserNotice(
+          retryPrompt.userNotice ??
+            "Number of chars exceeds model context. Content was trimmed."
         );
+        setChatUserNoticeTitle(retryPrompt.userNoticeTitle ?? "Retried with tighter context.");
+        response = await session.prompt(retryPrompt.prompt);
       }
 
       if (chatRunIdRef.current !== runId) return true;
@@ -1029,14 +1131,19 @@ function SidePanel() {
                 chatId={chatId}
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
-                chatContextStatus={chatContextStatus}
+                pageContentCharCount={chatContextCounts.pageContent}
+                selectedTextCharCount={chatContextCounts.selectedText}
+                pageContentExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsPageContentLimit}
+                selectedTextExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit}
+                chatContextStatus={chatUserNotice}
+                chatContextStatusTitle={chatUserNoticeTitle}
                 chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
                 onSubmit={(message) => handleStartChat(message, true)}
                 onStop={handleStopChat}
                 onOpenSettings={openChatSettings}
                 onOpenThread={handleOpenChatThread}
-                onIncludePageContentChange={setIncludeChatPageContent}
-                onIncludeSelectedTextChange={setIncludeChatSelectedText}
+                onIncludePageContentChange={handleIncludeChatPageContentChange}
+                onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
               />
             ) : showSparkResult && prospectorResult ? (
               <ProspectorResult
@@ -1082,7 +1189,12 @@ function SidePanel() {
                 chatApiKeyAvailable={hasChatApiKey}
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
-                chatContextStatus={chatContextStatus}
+                pageContentCharCount={chatContextCounts.pageContent}
+                selectedTextCharCount={chatContextCounts.selectedText}
+                pageContentExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsPageContentLimit}
+                selectedTextExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit}
+                chatContextStatus={chatUserNotice}
+                chatContextStatusTitle={chatUserNoticeTitle}
                 chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
                 prospector={{
                   visible: prospectorStatus.visible,
@@ -1095,8 +1207,8 @@ function SidePanel() {
                 onUseSpark={handleUseSpark}
                 onStartChat={(message) => handleStartChat(message, false)}
                 onOpenChatSettings={openChatSettings}
-                onIncludePageContentChange={setIncludeChatPageContent}
-                onIncludeSelectedTextChange={setIncludeChatSelectedText}
+                onIncludePageContentChange={handleIncludeChatPageContentChange}
+                onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
                 onSelectBrand={setBrand}
                 onSelectProject={setProject}
               />
@@ -1284,6 +1396,12 @@ interface ChromePromptLimits {
   historyLimit: number;
 }
 
+interface ChromePromptResult {
+  prompt: string;
+  userNotice: string | null;
+  userNoticeTitle: string | null;
+}
+
 const DEFAULT_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
   pageContentLimit: CHROME_PAGE_CONTENT_CHAR_LIMIT,
   selectedTextLimit: CHROME_SELECTED_TEXT_CHAR_LIMIT,
@@ -1294,22 +1412,47 @@ function buildChromeChatPrompt(
   messages: ChatUiMessage[],
   context: ChatPromptContext,
   limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS
-): string {
+): ChromePromptResult {
   const parts = [];
+  const clippedPageContent = clipStart(context.pageContent, limits.pageContentLimit);
+  const clippedSelectedText = clipStart(context.selectedText, limits.selectedTextLimit);
   const contextText = buildContextText({
     pageUrl: context.pageUrl,
-    pageContent: clipStart(context.pageContent, limits.pageContentLimit),
-    selectedText: clipStart(context.selectedText, limits.selectedTextLimit),
+    pageContent: clippedPageContent.text,
+    selectedText: clippedSelectedText.text,
   });
   if (contextText) parts.push(contextText);
 
-  const history = messages
+  const rawHistory = messages
     .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content}`)
     .join("\n\n");
-  const clippedHistory = clipEnd(history, limits.historyLimit);
-  if (clippedHistory) parts.push(`Conversation:\n${clippedHistory}`);
+  const clippedHistory = clipEnd(rawHistory, limits.historyLimit);
+  if (clippedHistory.text) parts.push(`Conversation:\n${clippedHistory.text}`);
 
-  return parts.join("\n\n---\n\n");
+  const trimmedDetails = [
+    clippedPageContent.truncated
+      ? `page content after trimming: ${clippedPageContent.text.length} chars`
+      : null,
+    clippedSelectedText.truncated
+      ? `highlighted text after trimming: ${clippedSelectedText.text.length} chars`
+      : null,
+    clippedHistory.truncated
+      ? `chat history after trimming: ${clippedHistory.text.length} chars`
+      : null,
+  ].filter(Boolean);
+  const trimmedItems = [
+    clippedPageContent.truncated ? "page content" : null,
+    clippedSelectedText.truncated ? "highlighted text" : null,
+    clippedHistory.truncated ? "chat history" : null,
+  ].filter(Boolean);
+
+  return {
+    prompt: parts.join("\n\n---\n\n"),
+    userNotice: trimmedItems.length
+      ? "Number of chars exceeds model context. Content was trimmed."
+      : null,
+    userNoticeTitle: trimmedDetails.length ? trimmedDetails.join(", ") : null,
+  };
 }
 
 function buildContextText(context: ChatPromptContext): string {
@@ -1321,18 +1464,33 @@ function buildContextText(context: ChatPromptContext): string {
 }
 
 function clipStart(text: string, limit: number) {
-  if (text.length <= limit) return text;
-  return `${text.slice(0, limit)}\n\n[Content trimmed for Google local model context limit.]`;
+  if (text.length <= limit) return { text, truncated: false };
+  return {
+    text: `${text.slice(0, limit)}\n\n[Content trimmed for Google local model context limit.]`,
+    truncated: true,
+  };
 }
 
 function clipEnd(text: string, limit: number) {
-  if (text.length <= limit) return text;
-  return `[Earlier conversation trimmed for Google local model context limit.]\n\n${text.slice(-limit)}`;
+  if (text.length <= limit) return { text, truncated: false };
+  return {
+    text: `[Earlier conversation trimmed for Google local model context limit.]\n\n${text.slice(-limit)}`,
+    truncated: true,
+  };
 }
 
 function isInputTooLargeError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /input\s+is\s+too\s+large|too\s+large|quota|context/i.test(message);
+}
+
+function getChatContextLimitState(counts: ChatContextCounts): ChatContextLimitState {
+  return {
+    exceedsPageContentLimit:
+      counts.pageContent !== null && counts.pageContent > CHROME_PAGE_CONTENT_CHAR_LIMIT,
+    exceedsSelectedTextLimit:
+      counts.selectedText !== null && counts.selectedText > CHROME_SELECTED_TEXT_CHAR_LIMIT,
+  };
 }
 
 export default function App() {

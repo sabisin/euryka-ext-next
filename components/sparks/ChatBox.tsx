@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { KeyRound, Send } from "lucide-react";
+import { KeyRound, Send, TriangleAlert } from "lucide-react";
 import { Button } from "../shared/Button";
 
 interface Props {
@@ -8,7 +8,12 @@ interface Props {
   compact?: boolean;
   includePageContent?: boolean;
   includeSelectedText?: boolean;
+  pageContentCharCount?: number | null;
+  selectedTextCharCount?: number | null;
+  pageContentExceedsLimit?: boolean;
+  selectedTextExceedsLimit?: boolean;
   contextStatus?: string | null;
+  contextStatusTitle?: string | null;
   providerStatus?: string | null;
   onSubmit: (message: string) => void;
   onOpenSettings: () => void;
@@ -22,7 +27,12 @@ export function ChatBox({
   compact = false,
   includePageContent = false,
   includeSelectedText = false,
+  pageContentCharCount = null,
+  selectedTextCharCount = null,
+  pageContentExceedsLimit = false,
+  selectedTextExceedsLimit = false,
   contextStatus = null,
+  contextStatusTitle = null,
   providerStatus = null,
   onSubmit,
   onOpenSettings,
@@ -72,6 +82,15 @@ export function ChatBox({
             className="h-3.5 w-3.5 rounded border-border"
           />
           Page content
+          {includePageContent && pageContentCharCount !== null && (
+            <span
+              className={`text-[10px] font-medium ${
+                pageContentExceedsLimit ? "text-amber-400" : "text-muted-foreground/80"
+              }`}
+            >
+              {pageContentCharCount} chars
+            </span>
+          )}
         </label>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input
@@ -82,6 +101,15 @@ export function ChatBox({
             className="h-3.5 w-3.5 rounded border-border"
           />
           Highlighted text
+          {includeSelectedText && selectedTextCharCount !== null && (
+            <span
+              className={`text-[10px] font-medium ${
+                selectedTextExceedsLimit ? "text-amber-400" : "text-muted-foreground/80"
+              }`}
+            >
+              {selectedTextCharCount} chars
+            </span>
+          )}
         </label>
       </div>
 
@@ -112,7 +140,12 @@ export function ChatBox({
       </form>
 
       {contextStatus && (
-        <p className="text-xs text-muted-foreground" aria-live="polite">
+        <p
+          className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300"
+          title={contextStatusTitle ?? undefined}
+          aria-live="polite"
+        >
+          <TriangleAlert size={13} className="shrink-0" />
           {contextStatus}
         </p>
       )}

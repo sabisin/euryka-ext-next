@@ -15,7 +15,12 @@ interface Props {
   chatId: string | null;
   includePageContent: boolean;
   includeSelectedText: boolean;
+  pageContentCharCount: number | null;
+  selectedTextCharCount: number | null;
+  pageContentExceedsLimit: boolean;
+  selectedTextExceedsLimit: boolean;
   chatContextStatus: string | null;
+  chatContextStatusTitle: string | null;
   chatProviderStatus: string | null;
   onSubmit: (message: string) => void;
   onStop: () => void;
@@ -34,7 +39,12 @@ export function ChatResult({
   chatId,
   includePageContent,
   includeSelectedText,
+  pageContentCharCount,
+  selectedTextCharCount,
+  pageContentExceedsLimit,
+  selectedTextExceedsLimit,
   chatContextStatus,
+  chatContextStatusTitle,
   chatProviderStatus,
   onSubmit,
   onStop,
@@ -174,7 +184,12 @@ export function ChatResult({
           isStreaming={isStreaming}
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
+          pageContentCharCount={pageContentCharCount}
+          selectedTextCharCount={selectedTextCharCount}
+          pageContentExceedsLimit={pageContentExceedsLimit}
+          selectedTextExceedsLimit={selectedTextExceedsLimit}
           contextStatus={chatContextStatus}
+          contextStatusTitle={chatContextStatusTitle}
           providerStatus={chatProviderStatus}
           onSubmit={onSubmit}
           onOpenSettings={onOpenSettings}

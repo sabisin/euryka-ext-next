@@ -28,7 +28,12 @@ interface Props {
   chatApiKeyAvailable: boolean;
   includePageContent: boolean;
   includeSelectedText: boolean;
+  pageContentCharCount: number | null;
+  selectedTextCharCount: number | null;
+  pageContentExceedsLimit: boolean;
+  selectedTextExceedsLimit: boolean;
   chatContextStatus: string | null;
+  chatContextStatusTitle: string | null;
   chatProviderStatus: string | null;
   onUseSpark: (spark: Spark) => void;
   onStartChat: (message: string) => void;
@@ -50,7 +55,12 @@ export function SparksGallery({
   chatApiKeyAvailable,
   includePageContent,
   includeSelectedText,
+  pageContentCharCount,
+  selectedTextCharCount,
+  pageContentExceedsLimit,
+  selectedTextExceedsLimit,
   chatContextStatus,
+  chatContextStatusTitle,
   chatProviderStatus,
   onUseSpark,
   onStartChat,
@@ -194,7 +204,12 @@ export function SparksGallery({
           apiKeyAvailable={chatApiKeyAvailable}
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
+          pageContentCharCount={pageContentCharCount}
+          selectedTextCharCount={selectedTextCharCount}
+          pageContentExceedsLimit={pageContentExceedsLimit}
+          selectedTextExceedsLimit={selectedTextExceedsLimit}
           contextStatus={chatContextStatus}
+          contextStatusTitle={chatContextStatusTitle}
           providerStatus={chatProviderStatus}
           onSubmit={onStartChat}
           onOpenSettings={onOpenChatSettings}
