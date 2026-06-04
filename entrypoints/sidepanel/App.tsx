@@ -5,13 +5,10 @@ import { ArrowLeft, Monitor, Moon, Sun } from "lucide-react";
 import { ThemeProvider } from "../../hooks/use-theme";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  onMessage,
-  removeAllListeners,
-  sendMessage,
-} from "../../lib/messaging";
+import { onMessage, removeAllListeners, sendMessage } from "../../lib/messaging";
 import {
   authStorage,
+  chatApiKeyStorage,
   collectionsStorage,
   collectionItemsStorage,
   currentIdentityStorage,
@@ -20,13 +17,9 @@ import {
   selectedTextStorage,
   userPrefs,
 } from "../../lib/storage";
-import {
-  decodeJwt,
-  fetchAndStoreToken,
-  getValidToken,
-  runWithTokenRetry,
-} from "../../lib/auth";
+import { decodeJwt, fetchAndStoreToken, getValidToken, runWithTokenRetry } from "../../lib/auth";
 import { analyseImage as apiAnalyseImage } from "../../lib/api";
+import { openChatThread, streamChatResponse } from "../../lib/chat-api";
 import { uploadFileWithRetry } from "../../lib/image-utils";
 import {
   buildFallbackProspect,
@@ -43,6 +36,7 @@ import { AnnotationsList } from "../../components/annotations/AnnotationsList";
 import { AnnotationHeaderTitle, AnnotationView } from "../../components/annotations/AnnotationView";
 import { SparksGallery } from "../../components/sparks/SparksGallery";
 import { SparksResult } from "../../components/sparks/SparksResult";
+import { ChatResult } from "../../components/sparks/ChatResult";
 import { ProspectorResult } from "../../components/sparks/ProspectorResult";
 import { HistoryList } from "../../components/history/HistoryList";
 import { SessionHeaderTitle, SessionView } from "../../components/history/SessionView";
@@ -52,8 +46,11 @@ import { CollectionItemView } from "../../components/collections/CollectionItemV
 import { DropzoneOverlay } from "../../components/image/DropzoneOverlay";
 import { ImageResult } from "../../components/image/ImageResult";
 import { Button } from "../../components/shared/Button";
+import { ChatApiKeySettings } from "../../components/settings/ChatApiKeySettings";
 import type {
   AuthState,
+  ChatMessage,
+  ChatUiMessage,
   Collection,
   CollectionItem,
   DragImageResult,
@@ -101,6 +98,7 @@ declare const chrome: {
     connect: (connectInfo: { name: string }) => ExtensionPort;
   };
   tabs: {
+    create: (createProperties: { url: string }) => void;
     query: (queryInfo: {
       active: boolean;
       currentWindow: boolean;
@@ -110,12 +108,13 @@ declare const chrome: {
 
 function SidePanel() {
   const [auth] = useStorageItem<AuthState>(authStorage);
+  const [chatApiKey, setChatApiKey] = useStorageItem<string>(chatApiKeyStorage);
   const [prefs, setPrefs] = useStorageItem<UserPrefs>(userPrefs);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarDocked, setSidebarDocked] = useState(false);
   const [currentTabUrl, setCurrentTabUrl] = useState<string | null>(null);
   const [prospectorStatus, setProspectorStatus] = useState<LinkedInProspectorStatus>(
-    DEFAULT_LINKEDIN_PROSPECTOR_STATUS,
+    DEFAULT_LINKEDIN_PROSPECTOR_STATUS
   );
   const [prospectorResult, setProspectorResult] = useState<LinkedInProspectData | null>(null);
 
@@ -131,6 +130,12 @@ function SidePanel() {
     sparkResult,
     sparkResultSessionId,
     sparkResultSourceUrl,
+    showChatResult,
+    chatId,
+    chatMessages,
+    chatSources,
+    chatError,
+    isChatStreaming,
     activeSpark,
     isDragging,
     isLoadingSpark,
@@ -148,6 +153,12 @@ function SidePanel() {
     setSelectedMarkerId,
     setSelectedImageUrl,
     setShowSparkResult,
+    setShowChatResult,
+    setChatId,
+    setChatMessages,
+    setChatSources,
+    setChatError,
+    setChatStreaming,
     setIsDragging,
     setLoadingSpark,
     setLoadingImage,
@@ -159,6 +170,8 @@ function SidePanel() {
   } = useUIStore();
 
   const isLoggedIn = !!auth?.token;
+  const hasChatApiKey = Boolean(chatApiKey?.trim());
+  const chatAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const syncSidebarSize = () => {
@@ -183,8 +196,7 @@ function SidePanel() {
       return;
     }
     const payload = decodeJwt(auth.token);
-    const identity =
-      auth.email ?? payload.email ?? auth.name ?? payload.name ?? null;
+    const identity = auth.email ?? payload.email ?? auth.name ?? payload.name ?? null;
     currentIdentityStorage.setValue(identity);
   }, [auth]);
 
@@ -274,22 +286,17 @@ function SidePanel() {
       });
     } else if (action.type === "triggerSpark") {
       const groups = queryClient.getQueryData<SparkGroup[]>(["sparks"]);
-      const spark = groups
-        ?.flatMap((g) => g.sparks)
-        .find((s) => s.id === action.sparkId);
+      const spark = groups?.flatMap((g) => g.sparks).find((s) => s.id === action.sparkId);
       if (spark) handleUseSparkRef.current(spark);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedWorkspaceId,
-    pendingAction,
-    setPendingAction,
-    setSelectedImageUrl,
-  ]);
+  }, [selectedWorkspaceId, pendingAction, setPendingAction, setSelectedImageUrl]);
 
   // ── Spark execution ───────────────────────────────────────────────────────
   // Defined before the message-listener effect so the refs below can point at them.
   const handleUseSpark = async (spark: Spark) => {
+    handleStopChat();
+    setShowChatResult(false);
     setProspectorResult(null);
     const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     if (!selectedWorkspaceId && workspaceId) {
@@ -341,17 +348,14 @@ function SidePanel() {
         ...DEFAULT_USER_PREFS,
         ...p,
         lastUsedSpark: spark,
-        lastFive: [
-          spark.id,
-          ...(p?.lastFive ?? []).filter((id) => id !== spark.id),
-        ].slice(0, 5),
+        lastFive: [spark.id, ...(p?.lastFive ?? []).filter((id) => id !== spark.id)].slice(0, 5),
       }));
     } catch {
       setShowSparkResult(
         true,
         "We couldn't complete the request. Please retry shortly.",
         undefined,
-        spark,
+        spark
       );
     } finally {
       setLoadingSpark(false);
@@ -359,25 +363,47 @@ function SidePanel() {
   };
 
   const handleRunProspector = async () => {
+    handleStopChat();
+    setShowChatResult(false);
     const initialProspect = buildFallbackProspect(currentTabUrl ?? "", []);
     setLoadingSpark(true);
     setProspectorResult(initialProspect);
-    setShowSparkResult(true, "prospector", undefined, LINKEDIN_PROSPECTOR_SPARK, currentTabUrl ?? undefined);
+    setShowSparkResult(
+      true,
+      "prospector",
+      undefined,
+      LINKEDIN_PROSPECTOR_SPARK,
+      currentTabUrl ?? undefined
+    );
 
     try {
       const prospect =
         THIS_TAB_ID !== null
           ? await sendMessage("getLinkedInProspectData", undefined, THIS_TAB_ID)
-          : buildFallbackProspect(currentTabUrl ?? "", ["Failed to read the current LinkedIn page."]);
+          : buildFallbackProspect(currentTabUrl ?? "", [
+              "Failed to read the current LinkedIn page.",
+            ]);
 
       setProspectorResult(prospect);
-      setShowSparkResult(true, "prospector", undefined, LINKEDIN_PROSPECTOR_SPARK, prospect.pageUrl || currentTabUrl || undefined);
+      setShowSparkResult(
+        true,
+        "prospector",
+        undefined,
+        LINKEDIN_PROSPECTOR_SPARK,
+        prospect.pageUrl || currentTabUrl || undefined
+      );
     } catch {
       const fallback = buildFallbackProspect(currentTabUrl ?? "", [
         "We couldn't inspect the current LinkedIn page or related entities. Please retry shortly.",
       ]);
       setProspectorResult(fallback);
-      setShowSparkResult(true, "prospector", undefined, LINKEDIN_PROSPECTOR_SPARK, fallback.pageUrl || currentTabUrl || undefined);
+      setShowSparkResult(
+        true,
+        "prospector",
+        undefined,
+        LINKEDIN_PROSPECTOR_SPARK,
+        fallback.pageUrl || currentTabUrl || undefined
+      );
     } finally {
       setLoadingSpark(false);
     }
@@ -386,6 +412,8 @@ function SidePanel() {
   // ── Image analysis ────────────────────────────────────────────────────────
   const handleAnalyseImage = async (dragResult: DragImageResult) => {
     if (!selectedWorkspaceId) return;
+    handleStopChat();
+    setShowChatResult(false);
     const workspaceId = selectedWorkspaceId;
     setLoadingImage(true);
     setImageResult(null);
@@ -404,7 +432,7 @@ function SidePanel() {
         const { imageUrl: uploaded } = await uploadFileWithRetry(
           token,
           workspaceId,
-          dragResult.file,
+          dragResult.file
         );
         imageUrl = uploaded;
       }
@@ -418,7 +446,7 @@ function SidePanel() {
           pageContent: pageText,
           brandId: selectedBrandId ?? undefined,
           projectId: selectedProjectId ?? undefined,
-        }),
+        })
       );
 
       setImageResult(result.content, result.id);
@@ -427,6 +455,137 @@ function SidePanel() {
     } finally {
       setLoadingImage(false);
       setIsDragging(false);
+    }
+  };
+
+  const handleStartChat = async (message: string, continueConversation = showChatResult) => {
+    const apiKey = chatApiKey?.trim();
+
+    setPage("sparks");
+    setSelectedImageUrl(null);
+    setShowSparkResult(false);
+    setProspectorResult(null);
+    setShowChatResult(true);
+    setChatError(null);
+    setChatSources([]);
+    const activeChatId = continueConversation ? chatId : null;
+
+    if (!continueConversation) {
+      setChatId(null);
+    }
+
+    if (!apiKey) {
+      setChatMessages([]);
+      setChatId(null);
+      setChatError("Add your Euryka API key in Settings to use chat.");
+      return;
+    }
+
+    if (chatAbortRef.current) {
+      chatAbortRef.current.abort();
+    }
+
+    const userMessage: ChatUiMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      createdAt: Date.now(),
+    };
+    const history = [
+      ...(continueConversation ? chatMessages.filter((item) => item.content.trim()) : []),
+      userMessage,
+    ];
+    const assistantMessage: ChatUiMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+    };
+
+    setChatMessages([...history, assistantMessage]);
+    setChatStreaming(true);
+
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
+
+    try {
+      const requestMessages = continueConversation && activeChatId ? [userMessage] : history;
+      const response = await streamChatResponse(
+        apiKey,
+        {
+          ...(activeChatId ? { chatId: activeChatId } : {}),
+          messages: toChatApiMessages(requestMessages),
+          brandId: selectedBrandId ?? undefined,
+          projectId: selectedProjectId ?? undefined,
+          timestampString: new Date().toString(),
+        },
+        {
+          onTextDelta: (delta) => {
+            setChatMessages((current) =>
+              current.map((item) =>
+                item.id === assistantMessage.id ? { ...item, content: item.content + delta } : item
+              )
+            );
+          },
+          onSource: (source) => {
+            setChatSources((current) =>
+              current.some((item) => item.sourceId === source.sourceId || item.url === source.url)
+                ? current
+                : [...current, source]
+            );
+          },
+          onError: (errorText) => setChatError(errorText),
+        },
+        controller.signal
+      );
+      if (response.chatId) {
+        setChatId(response.chatId);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      setChatError(
+        error instanceof Error ? error.message : "We couldn't complete the chat request."
+      );
+    } finally {
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null;
+      }
+      setChatStreaming(false);
+    }
+  };
+
+  const handleStopChat = () => {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    setChatStreaming(false);
+  };
+
+  const handleBackFromChat = () => {
+    handleStopChat();
+    setShowChatResult(false);
+  };
+
+  const handleOpenChatThread = async () => {
+    const apiKey = chatApiKey?.trim();
+    if (!apiKey) {
+      setChatError("Add your Euryka API key in Settings to open this chat in threads.");
+      return;
+    }
+    if (!chatId) {
+      setChatError("Start a chat before opening it in threads.");
+      return;
+    }
+
+    setChatError(null);
+    try {
+      const threadUrl = await openChatThread(apiKey, chatId);
+      chrome.tabs.create({ url: threadUrl });
+    } catch (error) {
+      setChatError(
+        error instanceof Error ? error.message : "We couldn't open this chat in threads."
+      );
     }
   };
 
@@ -514,10 +673,7 @@ function SidePanel() {
             collectionId,
             newItem,
           });
-          const next = [
-            newItem,
-            ...current.filter((item) => item.id !== newItem.id),
-          ];
+          const next = [newItem, ...current.filter((item) => item.id !== newItem.id)];
           await collectionItemsStorage.setValue(next);
           logCollectionSave("Finished collection item save request", {
             nextCount: next.length,
@@ -530,15 +686,19 @@ function SidePanel() {
     });
 
     const cleanup7 = onMessage("annotationUpdated", ({ data }) => {
-      window.dispatchEvent(new CustomEvent("eurykaAnnotationUpdated", {
-        detail: data.annotation,
-      }));
+      window.dispatchEvent(
+        new CustomEvent("eurykaAnnotationUpdated", {
+          detail: data.annotation,
+        })
+      );
     });
 
     const cleanup8 = onMessage("annotationDeleted", ({ data }) => {
-      window.dispatchEvent(new CustomEvent("eurykaAnnotationDeleted", {
-        detail: data.id,
-      }));
+      window.dispatchEvent(
+        new CustomEvent("eurykaAnnotationDeleted", {
+          detail: data.id,
+        })
+      );
     });
 
     return () => {
@@ -556,14 +716,24 @@ function SidePanel() {
 
   if (!isLoggedIn) return <LoggedOut />;
 
+  const isChatResultView = currentPage === "sparks" && !selectedImageUrl && showChatResult;
+
   const isSparkResultView =
     currentPage === "sparks" &&
     !selectedImageUrl &&
+    !showChatResult &&
     (showSparkResult || isLoadingSpark);
 
   const navigate = (page: typeof currentPage) => {
+    handleStopChat();
     resetInnerViews();
     setPage(page);
+  };
+
+  const openChatSettings = () => {
+    handleStopChat();
+    resetInnerViews();
+    setPage("settings");
   };
 
   const openCollectionItem = (item: CollectionItem) => {
@@ -599,7 +769,6 @@ function SidePanel() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
           currentPage={currentPage}
-          centerTitle={isSparkResultView}
           titleSlot={
             currentPage === "annotations" && selectedMarkerId ? (
               <AnnotationHeaderTitle
@@ -614,7 +783,17 @@ function SidePanel() {
             ) : undefined
           }
           leftSlot={
-            isSparkResultView ? (
+            isChatResultView ? (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={handleBackFromChat}
+                className="px-0 hover:bg-transparent"
+              >
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+            ) : isSparkResultView ? (
               <Button
                 variant="ghost"
                 size="md"
@@ -627,6 +806,7 @@ function SidePanel() {
               </Button>
             ) : undefined
           }
+          centerTitle={isSparkResultView || isChatResultView}
         />
 
         <main className="flex-1 overflow-hidden">
@@ -643,7 +823,20 @@ function SidePanel() {
               }}
             />
           ) : currentPage === "sparks" ? (
-            showSparkResult && prospectorResult ? (
+            showChatResult ? (
+              <ChatResult
+                messages={chatMessages}
+                sources={chatSources}
+                error={chatError}
+                isStreaming={isChatStreaming}
+                apiKeyAvailable={hasChatApiKey}
+                chatId={chatId}
+                onSubmit={(message) => handleStartChat(message, true)}
+                onStop={handleStopChat}
+                onOpenSettings={openChatSettings}
+                onOpenThread={handleOpenChatThread}
+              />
+            ) : showSparkResult && prospectorResult ? (
               <ProspectorResult
                 prospect={prospectorResult}
                 spark={LINKEDIN_PROSPECTOR_SPARK}
@@ -684,6 +877,8 @@ function SidePanel() {
                 projects={projects}
                 lastFive={prefs?.lastFive ?? []}
                 currentUrl={currentTabUrl}
+                currentTabId={THIS_TAB_ID}
+                chatApiKeyAvailable={hasChatApiKey}
                 prospector={{
                   visible: prospectorStatus.visible,
                   title: LINKEDIN_PROSPECTOR_SPARK.title,
@@ -693,6 +888,8 @@ function SidePanel() {
                   onClick: handleRunProspector,
                 }}
                 onUseSpark={handleUseSpark}
+                onStartChat={(message) => handleStartChat(message, false)}
+                onOpenChatSettings={openChatSettings}
                 onSelectBrand={setBrand}
                 onSelectProject={setProject}
               />
@@ -705,10 +902,7 @@ function SidePanel() {
                 onBack={() => setSelectedSession(null)}
               />
             ) : (
-              <HistoryList
-                wsId={selectedWorkspaceId}
-                onSelectSession={setSelectedSession}
-              />
+              <HistoryList wsId={selectedWorkspaceId} onSelectSession={setSelectedSession} />
             )
           ) : currentPage === "annotations" ? (
             selectedMarkerId ? (
@@ -739,12 +933,15 @@ function SidePanel() {
             )
           ) : currentPage === "settings" ? (
             <div className="flex flex-col gap-px overflow-y-auto">
+              <ChatApiKeySettings
+                apiKey={chatApiKey ?? ""}
+                onSave={setChatApiKey}
+                onRemove={() => setChatApiKey("")}
+              />
               <div className="flex items-center justify-between border-b border-border px-4 py-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">Theme</p>
-                  <p className="text-xs text-muted-foreground">
-                    Appearance preference
-                  </p>
+                  <p className="text-xs text-muted-foreground">Appearance preference</p>
                 </div>
                 <div className="flex items-center overflow-hidden rounded-lg border border-border">
                   {(["system", "light", "dark"] as const).map((value) => {
@@ -780,9 +977,7 @@ function SidePanel() {
               </div>
               <div className="flex items-center justify-between border-b border-border px-4 py-4">
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Floating button
-                  </p>
+                  <p className="text-sm font-medium text-foreground">Floating button</p>
                   <p className="text-xs text-muted-foreground">
                     Show the quick-action button on pages
                   </p>
@@ -831,9 +1026,7 @@ async function getOrCreateDefaultCollectionId(): Promise<string> {
     count: collections.length,
     names: collections.map((collection) => collection.name),
   });
-  const existing = collections.find(
-    (collection) => collection.name === DEFAULT_COLLECTION_NAME,
-  );
+  const existing = collections.find((collection) => collection.name === DEFAULT_COLLECTION_NAME);
   if (existing) {
     logCollectionSave("Using existing default collection", {
       id: existing.id,
@@ -855,6 +1048,14 @@ async function getOrCreateDefaultCollectionId(): Promise<string> {
     id: collection.id,
   });
   return collection.id;
+}
+
+function toChatApiMessages(messages: ChatUiMessage[]): ChatMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    parts: [{ type: "text", text: message.content }],
+  }));
 }
 
 export default function App() {

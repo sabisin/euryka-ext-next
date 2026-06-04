@@ -21,6 +21,10 @@ export const sparkCacheStorage = storage.defineItem<SparkCache>("local:sparkCach
   defaultValue: {},
 });
 
+export const chatApiKeyStorage = storage.defineItem<string>("local:chatApiKey", {
+  defaultValue: "",
+});
+
 export const pageTextStorage = storage.defineItem<string>("session:pageText", {
   defaultValue: "",
 });

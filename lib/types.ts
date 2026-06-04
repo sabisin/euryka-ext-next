@@ -132,6 +132,68 @@ export interface SparkResult {
   metadata?: Record<string, unknown>;
 }
 
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+export type ChatMessagePart =
+  | { type: "text"; text: string }
+  | { type: "file"; mediaType: string; url: string; filename?: string }
+  | { type: "image"; image: string; mediaType?: string };
+
+export interface ChatMessage {
+  id?: string;
+  role: ChatMessageRole;
+  parts: ChatMessagePart[];
+}
+
+export interface ChatRequest {
+  chatId?: string;
+  messages: ChatMessage[];
+  model?: string;
+  isThinking?: boolean;
+  isResearch?: boolean;
+  brandId?: string;
+  projectId?: string;
+  personaId?: string;
+  assistantId?: string;
+  timestampString?: string;
+}
+
+export type MessageChunk =
+  | { type: "start"; messageId?: string }
+  | { type: "start-step" }
+  | { type: "finish-step" }
+  | { type: "finish"; finishReason?: string }
+  | { type: "abort"; reason?: string }
+  | { type: "error"; errorText: string }
+  | { type: "text-start"; id: string }
+  | { type: "text-delta"; id: string; delta: string }
+  | { type: "text-end"; id: string }
+  | { type: "reasoning-start"; id: string }
+  | { type: "reasoning-delta"; id: string; delta: string }
+  | { type: "reasoning-end"; id: string }
+  | { type: "tool-input-start"; toolCallId: string; toolName: string }
+  | { type: "tool-input-delta"; toolCallId: string; inputTextDelta: string }
+  | { type: "tool-input-available"; toolCallId: string; toolName: string; input: unknown }
+  | { type: "tool-input-error"; toolCallId: string; toolName: string; input: unknown; errorText: string }
+  | { type: "tool-output-available"; toolCallId: string; output: unknown; preliminary?: boolean }
+  | { type: "tool-output-error"; toolCallId: string; errorText: string }
+  | { type: "source-url"; sourceId: string; url: string; title?: string }
+  | { type: "source-document"; sourceId: string; mediaType: string; title: string; filename?: string }
+  | { type: "file"; url: string; mediaType: string };
+
+export interface ChatSource {
+  sourceId: string;
+  url: string;
+  title?: string;
+}
+
+export interface ChatUiMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: number;
+}
+
 export interface ImageAnalysisResult {
   id: string;
   content: string;

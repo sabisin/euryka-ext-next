@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import type { CollectionItem, PageKey, Session, Spark } from "../lib/types";
+import type {
+  ChatSource,
+  ChatUiMessage,
+  CollectionItem,
+  PageKey,
+  Session,
+  Spark,
+} from "../lib/types";
 
 type PendingCollectionItem = Omit<CollectionItem, "id" | "collectionId" | "createdAt">;
 
@@ -19,6 +26,12 @@ interface UIState {
   sparkResult: string | null;
   sparkResultSessionId: string | null;
   sparkResultSourceUrl: string | null;
+  showChatResult: boolean;
+  chatId: string | null;
+  chatMessages: ChatUiMessage[];
+  chatSources: ChatSource[];
+  chatError: string | null;
+  isChatStreaming: boolean;
   activeSpark: Spark | null;
   isDragging: boolean;
   isLoadingSpark: boolean;
@@ -37,7 +50,21 @@ interface UIState {
   setSelectedSession: (session: Session | null) => void;
   setSelectedMarkerId: (id: string | null) => void;
   setSelectedImageUrl: (url: string | null) => void;
-  setShowSparkResult: (show: boolean, result?: string, sessionId?: string, spark?: Spark, sourceUrl?: string) => void;
+  setShowSparkResult: (
+    show: boolean,
+    result?: string,
+    sessionId?: string,
+    spark?: Spark,
+    sourceUrl?: string
+  ) => void;
+  setShowChatResult: (show: boolean) => void;
+  setChatId: (id: string | null) => void;
+  setChatMessages: (
+    messages: ChatUiMessage[] | ((messages: ChatUiMessage[]) => ChatUiMessage[])
+  ) => void;
+  setChatSources: (sources: ChatSource[] | ((sources: ChatSource[]) => ChatSource[])) => void;
+  setChatError: (error: string | null) => void;
+  setChatStreaming: (streaming: boolean) => void;
   setIsDragging: (dragging: boolean) => void;
   setLoadingSpark: (loading: boolean) => void;
   setLoadingImage: (loading: boolean) => void;
@@ -61,6 +88,12 @@ export const useUIStore = create<UIState>((set) => ({
   sparkResult: null,
   sparkResultSessionId: null,
   sparkResultSourceUrl: null,
+  showChatResult: false,
+  chatId: null,
+  chatMessages: [],
+  chatSources: [],
+  chatError: null,
+  isChatStreaming: false,
   activeSpark: null,
   isDragging: false,
   isLoadingSpark: false,
@@ -73,9 +106,10 @@ export const useUIStore = create<UIState>((set) => ({
   pendingCollectionItem: null,
 
   setPage: (page) => set({ currentPage: page }),
-  setWorkspace: (id) => set({ selectedWorkspaceId: id, selectedBrandId: null, selectedProjectId: null }),
+  setWorkspace: (id) =>
+    set({ selectedWorkspaceId: id, selectedBrandId: null, selectedProjectId: null }),
   setBrand: (id) => set({ selectedBrandId: id, selectedProjectId: null }),
-  setProject: (id, ) => set({ selectedProjectId: id }),
+  setProject: (id) => set({ selectedProjectId: id }),
   setSelectedSession: (session) => set({ selectedSession: session }),
   setSelectedMarkerId: (id) => set({ selectedMarkerId: id }),
   setSelectedImageUrl: (url) => set({ selectedImageUrl: url }),
@@ -87,6 +121,18 @@ export const useUIStore = create<UIState>((set) => ({
       sparkResultSourceUrl: sourceUrl ?? null,
       activeSpark: spark ?? null,
     }),
+  setShowChatResult: (show) => set({ showChatResult: show }),
+  setChatId: (id) => set({ chatId: id }),
+  setChatMessages: (messages) =>
+    set((state) => ({
+      chatMessages: typeof messages === "function" ? messages(state.chatMessages) : messages,
+    })),
+  setChatSources: (sources) =>
+    set((state) => ({
+      chatSources: typeof sources === "function" ? sources(state.chatSources) : sources,
+    })),
+  setChatError: (error) => set({ chatError: error }),
+  setChatStreaming: (streaming) => set({ isChatStreaming: streaming }),
   setIsDragging: (dragging) => set({ isDragging: dragging }),
   setLoadingSpark: (loading) => set({ isLoadingSpark: loading }),
   setLoadingImage: (loading) => set({ isLoadingImage: loading }),
@@ -104,6 +150,12 @@ export const useUIStore = create<UIState>((set) => ({
       showSparkResult: false,
       sparkResult: null,
       sparkResultSourceUrl: null,
+      showChatResult: false,
+      chatId: null,
+      chatMessages: [],
+      chatSources: [],
+      chatError: null,
+      isChatStreaming: false,
       imageResult: null,
       selectedCollectionId: null,
       selectedCollectionItemId: null,

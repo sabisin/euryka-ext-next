@@ -1,11 +1,13 @@
-import { useState } from "react";
 import { Search } from "lucide-react";
+import { useState } from "react";
 import { useSparks } from "../../hooks/use-sparks";
+import type { Brand, Project, Spark } from "../../lib/types";
 import { hexToRgba } from "../../lib/utils";
 import { IconWrapper } from "../shared/IconWrapper";
-import type { Brand, Project, Spark } from "../../lib/types";
-import { SparkCarousel } from "./SparkCarousel";
+import { ChatBox } from "./ChatBox";
+import { ChromePromptTestBox } from "./ChromePromptTestBox";
 import { ContextSelector } from "./ContextSelector";
+import { SparkCarousel } from "./SparkCarousel";
 
 const DEBUG = import.meta.env.WXT_DEBUG === "true";
 
@@ -16,6 +18,7 @@ interface Props {
   projects: Project[];
   lastFive: string[];
   currentUrl?: string | null;
+  currentTabId?: number | null;
   prospector?: {
     visible: boolean;
     title: string;
@@ -24,7 +27,10 @@ interface Props {
     color: string;
     onClick: () => void;
   };
+  chatApiKeyAvailable: boolean;
   onUseSpark: (spark: Spark) => void;
+  onStartChat: (message: string) => void;
+  onOpenChatSettings: () => void;
   onSelectBrand: (id: string | null) => void;
   onSelectProject: (id: string | null) => void;
 }
@@ -36,8 +42,12 @@ export function SparksGallery({
   projects,
   lastFive,
   currentUrl,
+  currentTabId = null,
   prospector,
+  chatApiKeyAvailable,
   onUseSpark,
+  onStartChat,
+  onOpenChatSettings,
   onSelectBrand,
   onSelectProject,
 }: Props) {
@@ -83,7 +93,10 @@ export function SparksGallery({
         />
 
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             type="text"
             placeholder="Search sparks…"
@@ -98,9 +111,7 @@ export function SparksGallery({
             <p className="truncate" title={currentUrl ?? ""}>
               Current URL: {currentUrl || "(none)"}
             </p>
-            <p className="truncate">
-              Prospects visible: {String(Boolean(prospector?.visible))}
-            </p>
+            <p className="truncate">Prospects visible: {String(Boolean(prospector?.visible))}</p>
           </div>
         )}
       </div>
@@ -169,11 +180,18 @@ export function SparksGallery({
             </section>
           ))
         )}
+
+        <ChatBox
+          apiKeyAvailable={chatApiKeyAvailable}
+          onSubmit={onStartChat}
+          onOpenSettings={onOpenChatSettings}
+        />
+
+        <ChromePromptTestBox tabId={currentTabId} />
       </div>
     </div>
   );
 }
-
 
 function isLinkedInUrl(url: string | undefined): boolean {
   if (!url) return false;
