@@ -108,6 +108,12 @@ const CHROME_CHAT_SESSION_OPTIONS = {
   expectedInputs: [{ type: "text", languages: ["en"] }],
   expectedOutputs: [{ type: "text", languages: ["en"] }],
 };
+const CHROME_PAGE_CONTENT_CHAR_LIMIT = 10_000;
+const CHROME_SELECTED_TEXT_CHAR_LIMIT = 4_000;
+const CHROME_HISTORY_CHAR_LIMIT = 4_000;
+const CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT = 4_000;
+const CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT = 2_000;
+const CHROME_RETRY_HISTORY_CHAR_LIMIT = 2_000;
 
 interface ChatPromptContext {
   pageUrl: string;
@@ -650,7 +656,20 @@ function SidePanel() {
     let session: LanguageModelSession | null = null;
     try {
       session = await languageModel.create(CHROME_CHAT_SESSION_OPTIONS);
-      const response = await session.prompt(buildChromeChatPrompt(history, context));
+      let response: string;
+      try {
+        response = await session.prompt(buildChromeChatPrompt(history, context));
+      } catch (error) {
+        if (!isInputTooLargeError(error)) throw error;
+        response = await session.prompt(
+          buildChromeChatPrompt(history, context, {
+            pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
+            selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
+            historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
+          })
+        );
+      }
+
       if (chatRunIdRef.current !== runId) return true;
       setChatId(null);
       setChatMessages((current) =>
@@ -1259,15 +1278,36 @@ function toChatApiMessages(
   ];
 }
 
-function buildChromeChatPrompt(messages: ChatUiMessage[], context: ChatPromptContext): string {
+interface ChromePromptLimits {
+  pageContentLimit: number;
+  selectedTextLimit: number;
+  historyLimit: number;
+}
+
+const DEFAULT_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
+  pageContentLimit: CHROME_PAGE_CONTENT_CHAR_LIMIT,
+  selectedTextLimit: CHROME_SELECTED_TEXT_CHAR_LIMIT,
+  historyLimit: CHROME_HISTORY_CHAR_LIMIT,
+};
+
+function buildChromeChatPrompt(
+  messages: ChatUiMessage[],
+  context: ChatPromptContext,
+  limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS
+): string {
   const parts = [];
-  const contextText = buildContextText(context);
+  const contextText = buildContextText({
+    pageUrl: context.pageUrl,
+    pageContent: clipStart(context.pageContent, limits.pageContentLimit),
+    selectedText: clipStart(context.selectedText, limits.selectedTextLimit),
+  });
   if (contextText) parts.push(contextText);
 
   const history = messages
     .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content}`)
     .join("\n\n");
-  if (history) parts.push(`Conversation:\n${history}`);
+  const clippedHistory = clipEnd(history, limits.historyLimit);
+  if (clippedHistory) parts.push(`Conversation:\n${clippedHistory}`);
 
   return parts.join("\n\n---\n\n");
 }
@@ -1278,6 +1318,21 @@ function buildContextText(context: ChatPromptContext): string {
   if (context.pageContent) parts.push(`Page content:\n${context.pageContent}`);
   if (context.selectedText) parts.push(`Highlighted text:\n${context.selectedText}`);
   return parts.join("\n\n");
+}
+
+function clipStart(text: string, limit: number) {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n\n[Content trimmed for Google local model context limit.]`;
+}
+
+function clipEnd(text: string, limit: number) {
+  if (text.length <= limit) return text;
+  return `[Earlier conversation trimmed for Google local model context limit.]\n\n${text.slice(-limit)}`;
+}
+
+function isInputTooLargeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /input\s+is\s+too\s+large|too\s+large|quota|context/i.test(message);
 }
 
 export default function App() {
