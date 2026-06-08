@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, MessageCircle, MessageSquareQuote, Square } from "lucide-react";
+import { Check, Copy, MessageSquareQuote, Square } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChatSource, ChatUiMessage } from "../../lib/types";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
@@ -71,14 +71,25 @@ export function ChatResult({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 bg-background px-4 py-4 text-foreground">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <MessageCircle size={16} />
-          </div>
-          <span className="truncate text-sm text-foreground/70">Chat</span>
-          {isStreaming && <span className="text-xs text-muted-foreground">Streaming</span>}
-        </div>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-background px-4 py-3">
+        <ChatBox
+          compact
+          apiKeyAvailable={apiKeyAvailable}
+          isStreaming={isStreaming}
+          includePageContent={includePageContent}
+          includeSelectedText={includeSelectedText}
+          pageContentCharCount={pageContentCharCount}
+          selectedTextCharCount={selectedTextCharCount}
+          pageContentExceedsLimit={pageContentExceedsLimit}
+          selectedTextExceedsLimit={selectedTextExceedsLimit}
+          contextStatus={chatContextStatus}
+          contextStatusTitle={chatContextStatusTitle}
+          providerStatus={chatProviderStatus}
+          onSubmit={onSubmit}
+          onOpenSettings={onOpenSettings}
+          onIncludePageContentChange={onIncludePageContentChange}
+          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
+        />
       </div>
 
       <div className="ek-scroll flex-1 overflow-y-auto px-4 py-4">
@@ -177,25 +188,6 @@ export function ChatResult({
             </Button>
           )}
         </div>
-
-        <ChatBox
-          compact
-          apiKeyAvailable={apiKeyAvailable}
-          isStreaming={isStreaming}
-          includePageContent={includePageContent}
-          includeSelectedText={includeSelectedText}
-          pageContentCharCount={pageContentCharCount}
-          selectedTextCharCount={selectedTextCharCount}
-          pageContentExceedsLimit={pageContentExceedsLimit}
-          selectedTextExceedsLimit={selectedTextExceedsLimit}
-          contextStatus={chatContextStatus}
-          contextStatusTitle={chatContextStatusTitle}
-          providerStatus={chatProviderStatus}
-          onSubmit={onSubmit}
-          onOpenSettings={onOpenSettings}
-          onIncludePageContentChange={onIncludePageContentChange}
-          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
-        />
       </div>
     </div>
   );

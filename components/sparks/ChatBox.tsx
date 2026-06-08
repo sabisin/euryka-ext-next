@@ -1,6 +1,7 @@
-import { FormEvent, useState } from "react";
-import { KeyRound, Send, TriangleAlert } from "lucide-react";
-import { Button } from "../shared/Button";
+import { useState } from "react";
+import { FileText, Highlighter, KeyRound, TriangleAlert } from "lucide-react";
+import ekIcon from "../../assets/ek-icon.svg";
+import { PromptInput, PromptInputToolButton } from "../shared/PromptInput";
 
 interface Props {
   apiKeyAvailable: boolean;
@@ -40,104 +41,58 @@ export function ChatBox({
   onIncludeSelectedTextChange,
 }: Props) {
   const [message, setMessage] = useState("");
-  const trimmed = message.trim();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!trimmed || isStreaming) return;
-    onSubmit(trimmed);
-    setMessage("");
+  const handleSubmit = ({ text }: { text: string }) => {
+    if (isStreaming) return;
+    onSubmit(text);
   };
 
   return (
-    <section className={compact ? "flex flex-col gap-2" : "flex flex-col gap-2.5 pt-2"}>
-      {!compact && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Chat
-            </h3>
+    <section className={compact ? "flex flex-col gap-2" : "flex flex-col gap-2.5"}>
+      <PromptInput
+        value={message}
+        onValueChange={setMessage}
+        onSubmit={handleSubmit}
+        disabled={isStreaming}
+        minRows={compact ? 1 : 2}
+        placeholder="Ask Euryka..."
+        submitStatus={isStreaming ? "streaming" : "ready"}
+        tools={
+          <>
+            <PromptInputToolButton
+              active={includePageContent}
+              disabled={isStreaming}
+              onClick={() => onIncludePageContentChange?.(!includePageContent)}
+              title="Include page content"
+            >
+              <FileText size={13} />
+              <span>Page</span>
+              {includePageContent && pageContentCharCount !== null && (
+                <ContextCount value={pageContentCharCount} warning={pageContentExceedsLimit} />
+              )}
+            </PromptInputToolButton>
+            <PromptInputToolButton
+              active={includeSelectedText}
+              disabled={isStreaming}
+              onClick={() => onIncludeSelectedTextChange?.(!includeSelectedText)}
+              title="Include highlighted text"
+            >
+              <Highlighter size={13} />
+              <span>Highlight</span>
+              {includeSelectedText && selectedTextCharCount !== null && (
+                <ContextCount value={selectedTextCharCount} warning={selectedTextExceedsLimit} />
+              )}
+            </PromptInputToolButton>
             {providerStatus && <ProviderBadge label={providerStatus} />}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
             {!apiKeyAvailable && (
-              <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+              <PromptInputToolButton onClick={onOpenSettings} title="Add Euryka API key">
                 <KeyRound size={13} />
-                API key
-              </Button>
+                <span>API key</span>
+              </PromptInputToolButton>
             )}
-          </div>
-        </div>
-      )}
-
-      {compact && providerStatus && <ProviderBadge label={providerStatus} />}
-
-      <div className="flex flex-wrap gap-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={includePageContent}
-            onChange={(event) => onIncludePageContentChange?.(event.target.checked)}
-            disabled={isStreaming}
-            className="h-3.5 w-3.5 rounded border-border"
-          />
-          Page content
-          {includePageContent && pageContentCharCount !== null && (
-            <span
-              className={`text-[10px] font-medium ${
-                pageContentExceedsLimit ? "text-amber-400" : "text-muted-foreground/80"
-              }`}
-            >
-              {pageContentCharCount} chars
-            </span>
-          )}
-        </label>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={includeSelectedText}
-            onChange={(event) => onIncludeSelectedTextChange?.(event.target.checked)}
-            disabled={isStreaming}
-            className="h-3.5 w-3.5 rounded border-border"
-          />
-          Highlighted text
-          {includeSelectedText && selectedTextCharCount !== null && (
-            <span
-              className={`text-[10px] font-medium ${
-                selectedTextExceedsLimit ? "text-amber-400" : "text-muted-foreground/80"
-              }`}
-            >
-              {selectedTextCharCount} chars
-            </span>
-          )}
-        </label>
-      </div>
-
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
-        <textarea
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-          disabled={isStreaming}
-          rows={compact ? 1 : 2}
-          placeholder="Ask Euryka..."
-          className="ek-scroll min-h-10 flex-1 resize-none rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-        />
-        <Button
-          type="submit"
-          variant="primary"
-          size="icon-lg"
-          title="Send"
-          disabled={!trimmed || isStreaming}
-        >
-          <Send size={15} />
-        </Button>
-      </form>
+          </>
+        }
+      />
 
       {contextStatus && (
         <p
@@ -154,9 +109,62 @@ export function ChatBox({
 }
 
 function ProviderBadge({ label }: { label: string }) {
+  const isGoogleProvider = isGoogleProviderLabel(label);
+
   return (
-    <span className="max-w-[180px] truncate rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-      {label}
+    <span
+      title={getProviderTooltip(label)}
+      aria-label={label}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground"
+    >
+      {isGoogleProvider ? (
+        <GoogleLogo className="h-3.5 w-3.5" />
+      ) : (
+        <img src={ekIcon} alt="" aria-hidden="true" className="h-3.5 w-3.5" />
+      )}
     </span>
+  );
+}
+
+function ContextCount({ value, warning }: { value: number; warning: boolean }) {
+  return <span className={warning ? "text-amber-400" : "text-muted-foreground/80"}>{value}</span>;
+}
+
+function getProviderTooltip(label: string): string {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("preparing")) {
+    return "Model provider: Google Chrome AI is preparing the local Gemini Nano model.";
+  }
+  if (isGoogleProviderLabel(label)) {
+    return "Model provider: Google Chrome AI. Gemini Nano runs locally in Chrome when available.";
+  }
+  return "Model provider: Euryka backend using your configured API key.";
+}
+
+function isGoogleProviderLabel(label: string): boolean {
+  const normalized = label.toLowerCase();
+  return normalized.includes("google") || normalized.includes("chrome");
+}
+
+function GoogleLogo({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 18" className={className}>
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.95v2.33A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.97 10.71A5.41 5.41 0 0 1 3.69 9c0-.59.1-1.16.28-1.71V4.96H.95A9 9 0 0 0 0 9c0 1.45.35 2.82.95 4.04l3.02-2.33Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .95 4.96l3.02 2.33C4.68 5.16 6.66 3.58 9 3.58Z"
+      />
+    </svg>
   );
 }

@@ -111,6 +111,23 @@ export function SparksGallery({
           onSelectProject={onSelectProject}
         />
 
+        <ChatBox
+          apiKeyAvailable={chatApiKeyAvailable}
+          includePageContent={includePageContent}
+          includeSelectedText={includeSelectedText}
+          pageContentCharCount={pageContentCharCount}
+          selectedTextCharCount={selectedTextCharCount}
+          pageContentExceedsLimit={pageContentExceedsLimit}
+          selectedTextExceedsLimit={selectedTextExceedsLimit}
+          contextStatus={chatContextStatus}
+          contextStatusTitle={chatContextStatusTitle}
+          providerStatus={chatProviderStatus}
+          onSubmit={onStartChat}
+          onOpenSettings={onOpenChatSettings}
+          onIncludePageContentChange={onIncludePageContentChange}
+          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
+        />
+
         <div className="relative">
           <Search
             size={14}
@@ -199,23 +216,6 @@ export function SparksGallery({
             </section>
           ))
         )}
-
-        <ChatBox
-          apiKeyAvailable={chatApiKeyAvailable}
-          includePageContent={includePageContent}
-          includeSelectedText={includeSelectedText}
-          pageContentCharCount={pageContentCharCount}
-          selectedTextCharCount={selectedTextCharCount}
-          pageContentExceedsLimit={pageContentExceedsLimit}
-          selectedTextExceedsLimit={selectedTextExceedsLimit}
-          contextStatus={chatContextStatus}
-          contextStatusTitle={chatContextStatusTitle}
-          providerStatus={chatProviderStatus}
-          onSubmit={onStartChat}
-          onOpenSettings={onOpenChatSettings}
-          onIncludePageContentChange={onIncludePageContentChange}
-          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
-        />
       </div>
     </div>
   );

@@ -89,7 +89,11 @@ const THIS_TAB_ID = (() => {
 type PromptAvailability = "unavailable" | "downloadable" | "downloading" | "available";
 
 interface LanguageModelSession {
-  prompt: (input: string) => Promise<string>;
+  prompt: (input: string, options?: { signal?: AbortSignal }) => Promise<string>;
+  promptStreaming?: (
+    input: string,
+    options?: { signal?: AbortSignal }
+  ) => ReadableStream<string> | AsyncIterable<string>;
   destroy?: () => void;
 }
 
@@ -228,7 +232,7 @@ function SidePanel() {
   const [chatUserNotice, setChatUserNotice] = useState<string | null>(null);
   const [chatUserNoticeTitle, setChatUserNoticeTitle] = useState<string | null>(null);
   const [chatProviderDebugStatus, setChatProviderDebugStatus] =
-    useState<string>("Google first");
+    useState<string>("Google Chrome AI");
 
   useEffect(() => {
     const syncSidebarSize = () => {
@@ -747,16 +751,31 @@ function SidePanel() {
       availability === "available" ? "Google Chrome AI" : "Google preparing"
     );
 
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
     let session: LanguageModelSession | null = null;
     try {
-      session = await languageModel.create(CHROME_CHAT_SESSION_OPTIONS);
+      session = await languageModel.create({
+        ...CHROME_CHAT_SESSION_OPTIONS,
+        signal: controller.signal,
+      });
       const initialPrompt = buildChromeChatPrompt(history, context);
       setChatUserNotice(initialPrompt.userNotice);
       setChatUserNoticeTitle(initialPrompt.userNoticeTitle);
 
       let response: string;
       try {
-        response = await session.prompt(initialPrompt.prompt);
+        response = await promptChromeSession({
+          session,
+          prompt: initialPrompt.prompt,
+          signal: controller.signal,
+          onText: (content) => {
+            if (chatRunIdRef.current !== runId) return;
+            setChatMessages((current) =>
+              current.map((item) => (item.id === assistantMessageId ? { ...item, content } : item))
+            );
+          },
+        });
       } catch (error) {
         if (!isInputTooLargeError(error)) throw error;
         const retryPrompt = buildChromeChatPrompt(history, context, {
@@ -765,11 +784,20 @@ function SidePanel() {
           historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
         });
         setChatUserNotice(
-          retryPrompt.userNotice ??
-            "Number of chars exceeds model context. Content was trimmed."
+          retryPrompt.userNotice ?? "Number of chars exceeds model context. Content was trimmed."
         );
         setChatUserNoticeTitle(retryPrompt.userNoticeTitle ?? "Retried with tighter context.");
-        response = await session.prompt(retryPrompt.prompt);
+        response = await promptChromeSession({
+          session,
+          prompt: retryPrompt.prompt,
+          signal: controller.signal,
+          onText: (content) => {
+            if (chatRunIdRef.current !== runId) return;
+            setChatMessages((current) =>
+              current.map((item) => (item.id === assistantMessageId ? { ...item, content } : item))
+            );
+          },
+        });
       }
 
       if (chatRunIdRef.current !== runId) return true;
@@ -782,6 +810,9 @@ function SidePanel() {
       setChatProviderDebugStatus("Google Chrome AI");
       return true;
     } finally {
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null;
+      }
       session?.destroy?.();
     }
   };
@@ -1133,8 +1164,12 @@ function SidePanel() {
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
                 selectedTextCharCount={chatContextCounts.selectedText}
-                pageContentExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsPageContentLimit}
-                selectedTextExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit}
+                pageContentExceedsLimit={
+                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit
+                }
+                selectedTextExceedsLimit={
+                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit
+                }
                 chatContextStatus={chatUserNotice}
                 chatContextStatusTitle={chatUserNoticeTitle}
                 chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
@@ -1191,8 +1226,12 @@ function SidePanel() {
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
                 selectedTextCharCount={chatContextCounts.selectedText}
-                pageContentExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsPageContentLimit}
-                selectedTextExceedsLimit={getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit}
+                pageContentExceedsLimit={
+                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit
+                }
+                selectedTextExceedsLimit={
+                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit
+                }
                 chatContextStatus={chatUserNotice}
                 chatContextStatusTitle={chatUserNoticeTitle}
                 chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
@@ -1369,10 +1408,7 @@ async function getOrCreateDefaultCollectionId(): Promise<string> {
   return collection.id;
 }
 
-function toChatApiMessages(
-  messages: ChatUiMessage[],
-  context?: ChatPromptContext
-): ChatMessage[] {
+function toChatApiMessages(messages: ChatUiMessage[], context?: ChatPromptContext): ChatMessage[] {
   const contextText = context ? buildContextText(context) : "";
   const apiMessages: ChatMessage[] = messages.map((message) => ({
     id: message.id,
@@ -1461,6 +1497,58 @@ function buildContextText(context: ChatPromptContext): string {
   if (context.pageContent) parts.push(`Page content:\n${context.pageContent}`);
   if (context.selectedText) parts.push(`Highlighted text:\n${context.selectedText}`);
   return parts.join("\n\n");
+}
+
+async function promptChromeSession({
+  session,
+  prompt,
+  signal,
+  onText,
+}: {
+  session: LanguageModelSession;
+  prompt: string;
+  signal: AbortSignal;
+  onText: (content: string) => void;
+}): Promise<string> {
+  if (!session.promptStreaming) {
+    const response = await session.prompt(prompt, { signal });
+    onText(response);
+    return response;
+  }
+
+  const stream = session.promptStreaming(prompt, { signal });
+  let response = "";
+
+  if (isReadableStream(stream)) {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        response = mergeChromeStreamChunk(response, value);
+        onText(response);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return response;
+  }
+
+  for await (const chunk of stream) {
+    response = mergeChromeStreamChunk(response, chunk);
+    onText(response);
+  }
+
+  return response;
+}
+
+function isReadableStream(value: unknown): value is ReadableStream<string> {
+  return typeof value === "object" && value !== null && "getReader" in value;
+}
+
+function mergeChromeStreamChunk(current: string, chunk: string): string {
+  if (chunk.startsWith(current)) return chunk;
+  return current + chunk;
 }
 
 function clipStart(text: string, limit: number) {
