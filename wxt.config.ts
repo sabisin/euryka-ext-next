@@ -40,5 +40,13 @@ export default defineConfig({
     side_panel: {
       default_path: "sidepanel.html",
     },
+    commands: {
+      "toggle-annotations": {
+        suggested_key: {
+          default: "Alt+Shift+A",
+        },
+        description: "Show or hide annotations on the page",
+      },
+    },
   },
 });

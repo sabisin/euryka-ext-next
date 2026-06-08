@@ -19,6 +19,7 @@ import {
 // Track which tabs have the side panel open (diagnostic / pending-action flush only —
 // NOT used for toggle decisions; toggle works via the broadcast self-close trick below).
 const openSidePanelTabs = new Set<number>();
+const TOGGLE_ANNOTATIONS_COMMAND = "toggle-annotations";
 
 // Queue actions that arrive before side panel sends sidePanelReady
 const pendingActions = new Map<
@@ -38,6 +39,14 @@ function logCollectionSave(message: string, details?: unknown) {
 
 function isTrackablePageUrl(url: string | undefined): url is string {
   return Boolean(url && /^https?:\/\//i.test(url));
+}
+
+async function toggleAnnotationsHidden() {
+  const current = await userPrefs.getValue();
+  await userPrefs.setValue({
+    ...current,
+    annotationsHidden: !current.annotationsHidden,
+  });
 }
 
 // Bind the panel to a specific tab and open it. Must be called synchronously
@@ -112,6 +121,11 @@ export default defineBackground(() => {
   chrome.action.onClicked.addListener((tab) => {
     if (!tab?.id) return;
     bindAndOpen(tab.id, tab.windowId);
+  });
+
+  chrome.commands.onCommand.addListener((command) => {
+    if (command !== TOGGLE_ANNOTATIONS_COMMAND) return;
+    void toggleAnnotationsHidden();
   });
 
   // ─── Context menu: Analyse Image ────────────────────────────────────────────

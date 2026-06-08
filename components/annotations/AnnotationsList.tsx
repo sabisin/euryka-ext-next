@@ -227,7 +227,8 @@ export function AnnotationsList({ onSelectMarker }: Props) {
         <Button
           variant="icon"
           size="icon-md"
-          title={hidden ? "Show annotations on page" : "Hide annotations on page"}
+          title={hidden ? "Show annotations on page (Alt+Shift+A)" : "Hide annotations on page (Alt+Shift+A)"}
+          aria-label={hidden ? "Show annotations on page" : "Hide annotations on page"}
           onClick={() => setPrefs((current) => {
             const currentPrefs = current as UserPrefs | undefined;
             return { ...currentPrefs!, annotationsHidden: !currentPrefs?.annotationsHidden };

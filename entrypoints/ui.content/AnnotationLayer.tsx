@@ -39,6 +39,7 @@ const FORMAT_ACTIONS = [
 ] as const;
 const ANNOTATION_UPDATED_EVENT = "annotationUpdated";
 const ANNOTATION_DELETED_EVENT = "annotationDeleted";
+const TOGGLE_ANNOTATIONS_SHORTCUT = "a";
 
 function debugAnnotations(message: string, details?: unknown) {
   console.info(`[Euryka annotations] ${message}`, details ?? "");
@@ -47,6 +48,16 @@ function debugAnnotations(message: string, details?: unknown) {
 function debugAnnotationPosition(message: string, details?: unknown) {
   if (!DEBUG_ANNOTATION_POSITIONING) return;
   debugAnnotations(message, details);
+}
+
+function isToggleAnnotationsShortcut(event: KeyboardEvent) {
+  return (
+    event.altKey &&
+    event.shiftKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    event.key.toLowerCase() === TOGGLE_ANNOTATIONS_SHORTCUT
+  );
 }
 
 function rectToDebug(rect: DOMRect) {
@@ -439,6 +450,33 @@ export function AnnotationLayer() {
   useEffect(() => {
     activeAnnotationIdRef.current = activeAnnotationId;
   }, [activeAnnotationId]);
+
+  useEffect(() => {
+    let toggling = false;
+
+    const toggleAnnotations = async (event: KeyboardEvent) => {
+      if (!isToggleAnnotationsShortcut(event) || event.repeat || toggling) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      toggling = true;
+
+      const nextHidden = !hidden;
+      setHidden(nextHidden);
+
+      try {
+        await sendMessage("updateUserPrefs", { annotationsHidden: nextHidden });
+      } catch (error) {
+        setHidden(hidden);
+        debugAnnotations("Failed to toggle annotations with shortcut", error);
+      } finally {
+        toggling = false;
+      }
+    };
+
+    window.addEventListener("keydown", toggleAnnotations, true);
+    return () => window.removeEventListener("keydown", toggleAnnotations, true);
+  }, [hidden]);
 
   useEffect(() => {
     const cleanupUpdated = onMessage(ANNOTATION_UPDATED_EVENT, ({ data }) => {
