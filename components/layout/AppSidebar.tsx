@@ -14,8 +14,10 @@ import {
 } from "lucide-react";
 import type { PageKey } from "../../lib/types";
 import type { Workspace } from "../../lib/types";
+import { useTheme } from "../../hooks/use-theme";
 import { Button } from "../shared/Button";
-import logo from "../../assets/ek-icon-white.svg";
+import darkLogo from "../../assets/ek-alt-blue.svg";
+import lightLogo from "../../assets/ek-icon-black.svg";
 
 interface SidebarProps {
   currentPage: PageKey;
@@ -57,6 +59,9 @@ const NAV_ITEMS: { key: PageKey; label: string; icon: React.ReactNode }[] = [
 
 // Permanent narrow icon rail — always visible on the left edge.
 export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps) {
+  const theme = useTheme();
+  const logo = theme === "light" ? lightLogo : darkLogo;
+
   return (
     <div className="flex w-11 flex-shrink-0 flex-col items-center border-r border-border bg-card">
       {/* Logo mark — fixed height matches the header */}
@@ -66,13 +71,12 @@ export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps
           title="Open sidebar"
           aria-label="Open sidebar"
           onClick={onOpenSidebar}
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg transition-opacity hover:opacity-80"
-          style={{ backgroundColor: "#18181b" }}
+          className="flex h-7 w-7 cursor-pointer items-center justify-center transition-opacity hover:opacity-80"
         >
           <img
             src={logo}
             alt="Euryka"
-            className="h-[18px] w-[18px]"
+            className="h-[22px] w-[22px]"
             draggable={false}
           />
         </button>
@@ -120,6 +124,9 @@ export function AppSidebar({
   onClose,
   docked = false,
 }: SidebarProps) {
+  const theme = useTheme();
+  const logo = theme === "light" ? lightLogo : darkLogo;
+
   if (!isOpen) return null;
 
   const allNavItems = [
@@ -150,14 +157,11 @@ export function AppSidebar({
         {/* Header */}
         <div className="flex h-16 items-center justify-between border-b border-border px-3">
           <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{ backgroundColor: "#18181b" }}
-            >
+            <div className="flex h-7 w-7 items-center justify-center">
               <img
                 src={logo}
                 alt=""
-                className="h-[18px] w-[18px]"
+                className="h-[22px] w-[22px]"
                 draggable={false}
               />
             </div>

@@ -8,7 +8,7 @@ import { onMessage, sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
 import { identityColor, identityInitial } from "../../lib/utils";
 import { Button } from "../../components/shared/Button";
-import logo from "../../assets/ek-icon-white.svg";
+import logo from "../../assets/ek-alt-blue.svg";
 
 type ContextPoint = {
   x: number;

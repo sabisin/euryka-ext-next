@@ -11,7 +11,7 @@ import { sendMessage } from "../../lib/messaging";
 import { pageUrlStorage, userPrefs } from "../../lib/storage";
 import type { UserPrefs } from "../../lib/types";
 import { Button } from "../shared/Button";
-import logo from "../../assets/ek-icon-white.svg";
+import logo from "../../assets/ek-alt-blue.svg";
 
 interface Props {
   onSelectMarker: (id: string) => void;

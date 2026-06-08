@@ -5,7 +5,7 @@ import { AnnotationLayer } from "./AnnotationLayer";
 import { DraggableButton } from "./DraggableButton";
 import { sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
-import logo from "../../assets/ek-icon-white.svg";
+import logo from "../../assets/ek-alt-blue.svg";
 
 function ContentUiApp() {
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
