@@ -63,7 +63,8 @@ export async function streamChatResponse(
 }
 
 export async function openChatThread(apiKey: string, chatId: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/api/v1/chat/${encodeURIComponent(chatId)}/threads`, {
+  const endpoint = `${BASE_URL}/api/v1/chat/${encodeURIComponent(chatId)}/threads`;
+  const res = await fetch(endpoint, {
     method: "GET",
     headers: {
       "x-api-key": apiKey,
@@ -74,7 +75,29 @@ export async function openChatThread(apiKey: string, chatId: string): Promise<st
     throw new Error(await getChatErrorMessage(res));
   }
 
-  return res.url || `${BASE_URL}/api/v1/chat/${encodeURIComponent(chatId)}/threads`;
+  // The endpoint redirects to the human-facing thread page. In some backend
+  // environments that redirect's Location points at the server's own bind
+  // address (e.g. http://0.0.0.0:8080) instead of the public host, so res.url
+  // comes back with the wrong origin. Re-base the resolved path onto BASE_URL
+  // so the opened tab always uses the configured origin.
+  return rebaseOntoBaseUrl(res.url) ?? endpoint;
+}
+
+/**
+ * Keep the path/query/hash of `rawUrl` but force its origin to BASE_URL.
+ * Returns null for an empty/unparseable input so callers can fall back.
+ */
+function rebaseOntoBaseUrl(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+  try {
+    const base = new URL(BASE_URL);
+    const target = new URL(rawUrl, base);
+    target.protocol = base.protocol;
+    target.host = base.host;
+    return target.toString();
+  } catch {
+    return null;
+  }
 }
 
 async function getChatErrorMessage(res: Response): Promise<string> {

@@ -41,19 +41,28 @@ export function extractPageText(): string {
   return cleanText(el.textContent ?? "");
 }
 
+// CSS.escape exists in all extension contexts (content scripts, side panel),
+// but guard anyway so this never throws in an unexpected environment.
+function cssEscape(value: string): string {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/[^\w-]/g, (ch) => `\\${ch}`);
+}
+
 export function getElementSelector(el: Element): string {
   const parts: string[] = [];
   let current: Element | null = el;
   while (current && current !== document.documentElement) {
     let part = current.tagName.toLowerCase();
     if (current.id) {
-      part += `#${current.id}`;
+      // Escape so ids with `:`, `/`, spaces or a leading digit stay valid.
+      part += `#${cssEscape(current.id)}`;
       parts.unshift(part);
       break;
     }
     const classes = Array.from(current.classList)
       .slice(0, 2)
-      .map((c) => `.${c}`)
+      .map((c) => `.${cssEscape(c)}`)
       .join("");
     part += classes;
     parts.unshift(part);
