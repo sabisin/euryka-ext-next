@@ -51,6 +51,15 @@ export interface Spark {
   group?: string;
 }
 
+export type ChatMode = "chat" | "spark-recommendation";
+
+export interface SparkRecommendation {
+  sparkId: string;
+  sparkTitle: string;
+  reason: string;
+  confidence?: number;
+}
+
 export type LinkedInProspectEntityType = "person" | "company" | "unsupported";
 
 export interface LinkedInProspectorStatus {

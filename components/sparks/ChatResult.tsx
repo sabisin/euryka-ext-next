@@ -1,10 +1,23 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, MessageSquareQuote, Square } from "lucide-react";
+import { Check, Copy, MessageSquareQuote, Play, Square } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ChatSource, ChatUiMessage } from "../../lib/types";
+import type {
+  ChatMode,
+  ChatSource,
+  ChatUiMessage,
+  Spark,
+  SparkRecommendation,
+} from "../../lib/types";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { Button } from "../shared/Button";
+import { IconWrapper } from "../shared/IconWrapper";
 import { ChatBox } from "./ChatBox";
+
+interface SparkRecommendationResult {
+  recommendation: SparkRecommendation;
+  spark: Spark;
+  rawText: string;
+}
 
 interface Props {
   messages: ChatUiMessage[];
@@ -13,6 +26,8 @@ interface Props {
   isStreaming: boolean;
   apiKeyAvailable: boolean;
   chatId: string | null;
+  mode: ChatMode;
+  sparkRecommendationResult: SparkRecommendationResult | null;
   includePageContent: boolean;
   includeSelectedText: boolean;
   pageContentCharCount: number | null;
@@ -26,6 +41,8 @@ interface Props {
   onStop: () => void;
   onOpenSettings: () => void;
   onOpenThread: () => void;
+  onModeChange: (mode: ChatMode) => void;
+  onRunRecommendedSpark: (spark: Spark) => void;
   onIncludePageContentChange: (checked: boolean) => void;
   onIncludeSelectedTextChange: (checked: boolean) => void;
 }
@@ -37,6 +54,8 @@ export function ChatResult({
   isStreaming,
   apiKeyAvailable,
   chatId,
+  mode,
+  sparkRecommendationResult,
   includePageContent,
   includeSelectedText,
   pageContentCharCount,
@@ -50,6 +69,8 @@ export function ChatResult({
   onStop,
   onOpenSettings,
   onOpenThread,
+  onModeChange,
+  onRunRecommendedSpark,
   onIncludePageContentChange,
   onIncludeSelectedTextChange,
 }: Props) {
@@ -76,6 +97,7 @@ export function ChatResult({
           compact
           apiKeyAvailable={apiKeyAvailable}
           isStreaming={isStreaming}
+          mode={mode}
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
           pageContentCharCount={pageContentCharCount}
@@ -87,6 +109,7 @@ export function ChatResult({
           providerStatus={chatProviderStatus}
           onSubmit={onSubmit}
           onOpenSettings={onOpenSettings}
+          onModeChange={onModeChange}
           onIncludePageContentChange={onIncludePageContentChange}
           onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
@@ -114,6 +137,13 @@ export function ChatResult({
               )}
             </div>
           ))}
+
+          {sparkRecommendationResult && (
+            <RecommendedSparkCard
+              result={sparkRecommendationResult}
+              onRun={() => onRunRecommendedSpark(sparkRecommendationResult.spark)}
+            />
+          )}
 
           {error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-red-500">
@@ -188,6 +218,47 @@ export function ChatResult({
             </Button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RecommendedSparkCard({
+  result,
+  onRun,
+}: {
+  result: SparkRecommendationResult;
+  onRun: () => void;
+}) {
+  const { spark, recommendation } = result;
+  const color = spark.color || "#FF7074";
+
+  return (
+    <div className="rounded-md border border-border bg-card p-3 text-card-foreground shadow-sm">
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+          style={{ backgroundColor: color }}
+        >
+          <IconWrapper name={spark.icon} color="white" size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{spark.title}</p>
+          {spark.description && (
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{spark.description}</p>
+          )}
+          {typeof recommendation.confidence === "number" && (
+            <p className="mt-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+              Confidence {Math.round(recommendation.confidence * 100)}%
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button variant="primary" size="sm" onClick={onRun}>
+          <Play size={12} />
+          Run Spark
+        </Button>
       </div>
     </div>
   );

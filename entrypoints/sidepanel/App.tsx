@@ -15,10 +15,12 @@ import {
   pageTextStorage,
   pageUrlStorage,
   selectedTextStorage,
+  sparkCacheStorage,
   userPrefs,
 } from "../../lib/storage";
 import { decodeJwt, fetchAndStoreToken, getValidToken, runWithTokenRetry } from "../../lib/auth";
-import { analyseImage as apiAnalyseImage } from "../../lib/api";
+import { DEBUG, debugLog } from "../../lib/debug";
+import { analyseImage as apiAnalyseImage, fetchSparks } from "../../lib/api";
 import { openChatThread, streamChatResponse } from "../../lib/chat-api";
 import { uploadFileWithRetry } from "../../lib/image-utils";
 import {
@@ -49,6 +51,7 @@ import { Button } from "../../components/shared/Button";
 import { ChatApiKeySettings } from "../../components/settings/ChatApiKeySettings";
 import type {
   AuthState,
+  ChatMode,
   ChatMessage,
   ChatUiMessage,
   Collection,
@@ -58,6 +61,7 @@ import type {
   LinkedInProspectorStatus,
   Spark,
   SparkGroup,
+  SparkRecommendation,
   UserPrefs,
 } from "../../lib/types";
 
@@ -69,13 +73,11 @@ const DEFAULT_USER_PREFS: UserPrefs = {
   lastUsedSpark: null,
   lastFive: [],
 };
-const DEBUG = import.meta.env.WXT_DEBUG === "true";
 const DEFAULT_COLLECTION_NAME = "Saved items";
 let collectionSaveQueue = Promise.resolve();
 
-function logCollectionSave(message: string, details?: unknown) {
-  console.info(`[Euryka collections] ${message}`, details ?? "");
-}
+const logCollectionSave = debugLog("[Euryka collections]");
+const logSparkRecommendation = debugLog("[Euryka spark recommendation]");
 
 // The panel page receives its tabId via the URL query string, set by the
 // background when calling sidePanel.setOptions({ path: "sidepanel.html?tabId=N" }).
@@ -118,6 +120,12 @@ const CHROME_HISTORY_CHAR_LIMIT = 4_000;
 const CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT = 4_000;
 const CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT = 2_000;
 const CHROME_RETRY_HISTORY_CHAR_LIMIT = 2_000;
+const CHROME_SPARK_RECOMMENDATION_PAGE_CONTENT_CHAR_LIMIT = 1_500;
+const CHROME_SPARK_RECOMMENDATION_SELECTED_TEXT_CHAR_LIMIT = 1_000;
+const CHROME_SPARK_RECOMMENDATION_HISTORY_CHAR_LIMIT = 9_000;
+const CHROME_SPARK_RECOMMENDATION_RETRY_PAGE_CONTENT_CHAR_LIMIT = 700;
+const CHROME_SPARK_RECOMMENDATION_RETRY_SELECTED_TEXT_CHAR_LIMIT = 500;
+const CHROME_SPARK_RECOMMENDATION_RETRY_HISTORY_CHAR_LIMIT = 5_000;
 
 interface ChatPromptContext {
   pageUrl: string;
@@ -128,6 +136,19 @@ interface ChatPromptContext {
 interface ChatContextCounts {
   pageContent: number | null;
   selectedText: number | null;
+}
+
+interface SparkCatalogItem {
+  id: string;
+  title: string;
+  description: string;
+  groups: string[];
+}
+
+interface SparkRecommendationResult {
+  recommendation: SparkRecommendation;
+  spark: Spark;
+  rawText: string;
 }
 
 interface ChatContextLimitState {
@@ -225,6 +246,9 @@ function SidePanel() {
   const chatRunIdRef = useRef(0);
   const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
   const [includeChatSelectedText, setIncludeChatSelectedText] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("chat");
+  const [sparkRecommendationResult, setSparkRecommendationResult] =
+    useState<SparkRecommendationResult | null>(null);
   const [chatContextCounts, setChatContextCounts] = useState<ChatContextCounts>({
     pageContent: null,
     selectedText: null,
@@ -357,6 +381,7 @@ function SidePanel() {
   // Defined before the message-listener effect so the refs below can point at them.
   const handleUseSpark = async (spark: Spark) => {
     handleStopChat();
+    setSparkRecommendationResult(null);
     setShowChatResult(false);
     setProspectorResult(null);
     const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
@@ -646,21 +671,49 @@ function SidePanel() {
     void refreshChatContextPreview(includeChatPageContent, false);
   };
 
+  const loadSparkGroupsForRecommendation = async (): Promise<SparkGroup[]> => {
+    const cached = queryClient.getQueryData<SparkGroup[]>(["sparks"]);
+    if (cached && cached.length > 0) {
+      logSparkRecommendation("using cached spark catalog", summarizeSparkGroups(cached));
+      return cached;
+    }
+
+    logSparkRecommendation("fetching spark catalog");
+    return queryClient.fetchQuery({
+      queryKey: ["sparks"],
+      staleTime: 10 * 60_000,
+      queryFn: async () => {
+        const token = await getValidToken();
+        if (!token) throw new Error("Not authenticated");
+        const { sparks } = await fetchSparks(token);
+        logSparkRecommendation("fetched spark catalog", summarizeSparkGroups(sparks));
+        const sparkCache = Object.fromEntries(
+          sparks.flatMap((group) => group.sparks).map((spark) => [spark.id, spark])
+        );
+        await sparkCacheStorage.setValue(sparkCache);
+        return sparks;
+      },
+    });
+  };
+
   const handleStartChat = async (message: string, continueConversation = showChatResult) => {
     const runId = ++chatRunIdRef.current;
+    const isSparkRecommendation = chatMode === "spark-recommendation";
+    const shouldContinueConversation = !isSparkRecommendation && continueConversation;
 
     setPage("sparks");
     setSelectedImageUrl(null);
     setShowSparkResult(false);
     setProspectorResult(null);
     setShowChatResult(true);
+    setSparkRecommendationResult(null);
     setChatError(null);
     setChatSources([]);
     setChatUserNotice(null);
     setChatUserNoticeTitle(null);
-    const activeChatId = continueConversation ? chatId : null;
+    const activeChatId = shouldContinueConversation ? chatId : null;
 
-    if (!continueConversation) {
+    if (!shouldContinueConversation) {
       setChatId(null);
     }
 
@@ -669,19 +722,70 @@ function SidePanel() {
       chatAbortRef.current = null;
     }
 
-    const context = await fetchChatPromptContext();
-    if (!context) return;
-
     const userMessage: ChatUiMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: message,
       createdAt: Date.now(),
     };
+
+    let sparkGroups: SparkGroup[] = [];
+    let allSparks: Spark[] = [];
+    let sparkCatalog: SparkCatalogItem[] = [];
+    if (isSparkRecommendation) {
+      try {
+        sparkGroups = await loadSparkGroupsForRecommendation();
+      } catch {
+        setChatMessages([userMessage]);
+        setChatError("We couldn't load sparks to recommend from. Please retry shortly.");
+        return;
+      }
+      allSparks = sparkGroups.flatMap((group) => group.sparks);
+      sparkCatalog = buildSparkCatalog(sparkGroups);
+      const compactCatalogText = buildSparkCatalogText(sparkCatalog);
+      logSparkRecommendation("prepared spark catalog for prompt", {
+        ...summarizeSparkCatalog(sparkGroups, sparkCatalog),
+        catalogJsonChars: JSON.stringify(sparkCatalog).length,
+        compactCatalogChars: compactCatalogText.length,
+        catalog: sparkCatalog,
+      });
+      if (allSparks.length === 0) {
+        setChatMessages([userMessage]);
+        setChatError("No sparks are available to recommend.");
+        return;
+      }
+    }
+
+    const context = await fetchChatPromptContext();
+    if (!context) return;
+
+    const modelUserMessage = isSparkRecommendation
+      ? {
+          ...userMessage,
+          content: buildSparkRecommendationUserPrompt(message, sparkCatalog),
+        }
+      : userMessage;
+    if (isSparkRecommendation) {
+      logSparkRecommendation("built recommendation prompt", {
+        userIntentChars: message.length,
+        promptChars: modelUserMessage.content.length,
+        context: {
+          pageUrlChars: context.pageUrl.length,
+          pageContentChars: context.pageContent.length,
+          selectedTextChars: context.selectedText.length,
+        },
+      });
+    }
     const history = [
-      ...(continueConversation ? chatMessages.filter((item) => item.content.trim()) : []),
+      ...(shouldContinueConversation ? chatMessages.filter((item) => item.content.trim()) : []),
       userMessage,
     ];
+    const modelHistory = isSparkRecommendation
+      ? [modelUserMessage]
+      : [
+          ...(shouldContinueConversation ? chatMessages.filter((item) => item.content.trim()) : []),
+          modelUserMessage,
+        ];
     const assistantMessage: ChatUiMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -693,23 +797,41 @@ function SidePanel() {
     setChatStreaming(true);
 
     try {
-      const usedChrome = await runChromeChat({
+      const chromeResult = await runChromeChat({
         assistantMessageId: assistantMessage.id,
         context,
-        history,
+        history: modelHistory,
         runId,
+        suppressAssistantText: isSparkRecommendation,
       });
 
-      if (usedChrome) return;
+      if (chromeResult.used) {
+        if (isSparkRecommendation) {
+          logSparkRecommendation("received Chrome recommendation response", {
+            responseChars: chromeResult.content.length,
+            responsePreview: chromeResult.content.slice(0, 800),
+          });
+          finalizeSparkRecommendationResponse(chromeResult.content, assistantMessage.id, allSparks);
+        }
+        return;
+      }
 
-      await runBackendChat({
+      const backendContent = await runBackendChat({
         activeChatId,
         assistantMessageId: assistantMessage.id,
         context,
-        continueConversation,
-        history,
-        userMessage,
+        continueConversation: shouldContinueConversation,
+        history: modelHistory,
+        userMessage: modelUserMessage,
+        suppressAssistantText: isSparkRecommendation,
       });
+      if (isSparkRecommendation && backendContent !== null) {
+        logSparkRecommendation("received backend recommendation response", {
+          responseChars: backendContent.length,
+          responsePreview: backendContent.slice(0, 800),
+        });
+        finalizeSparkRecommendationResponse(backendContent, assistantMessage.id, allSparks);
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -729,22 +851,24 @@ function SidePanel() {
     context,
     history,
     runId,
+    suppressAssistantText = false,
   }: {
     assistantMessageId: string;
     context: ChatPromptContext;
     history: ChatUiMessage[];
     runId: number;
-  }): Promise<boolean> => {
+    suppressAssistantText?: boolean;
+  }): Promise<{ used: boolean; content: string }> => {
     const languageModel = window.LanguageModel;
     if (!languageModel) {
       setChatProviderDebugStatus("Euryka");
-      return false;
+      return { used: false, content: "" };
     }
 
     const availability = await languageModel.availability(CHROME_CHAT_SESSION_OPTIONS);
     if (availability === "unavailable") {
       setChatProviderDebugStatus("Euryka");
-      return false;
+      return { used: false, content: "" };
     }
 
     setChatProviderDebugStatus(
@@ -759,7 +883,18 @@ function SidePanel() {
         ...CHROME_CHAT_SESSION_OPTIONS,
         signal: controller.signal,
       });
-      const initialPrompt = buildChromeChatPrompt(history, context);
+      const initialPrompt = buildChromeChatPrompt(
+        history,
+        context,
+        suppressAssistantText ? SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS : undefined
+      );
+      if (suppressAssistantText) {
+        logSparkRecommendation("using Chrome provider", {
+          promptChars: initialPrompt.prompt.length,
+          userNotice: initialPrompt.userNotice,
+          userNoticeTitle: initialPrompt.userNoticeTitle,
+        });
+      }
       setChatUserNotice(initialPrompt.userNotice);
       setChatUserNoticeTitle(initialPrompt.userNoticeTitle);
 
@@ -771,6 +906,7 @@ function SidePanel() {
           signal: controller.signal,
           onText: (content) => {
             if (chatRunIdRef.current !== runId) return;
+            if (suppressAssistantText) return;
             setChatMessages((current) =>
               current.map((item) => (item.id === assistantMessageId ? { ...item, content } : item))
             );
@@ -778,21 +914,35 @@ function SidePanel() {
         });
       } catch (error) {
         if (!isInputTooLargeError(error)) throw error;
-        const retryPrompt = buildChromeChatPrompt(history, context, {
-          pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
-          selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
-          historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
-        });
+        const retryPrompt = buildChromeChatPrompt(
+          history,
+          context,
+          suppressAssistantText
+            ? SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS
+            : {
+                pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
+                selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
+                historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
+              }
+        );
         setChatUserNotice(
           retryPrompt.userNotice ?? "Number of chars exceeds model context. Content was trimmed."
         );
         setChatUserNoticeTitle(retryPrompt.userNoticeTitle ?? "Retried with tighter context.");
+        if (suppressAssistantText) {
+          logSparkRecommendation("retrying Chrome provider with tighter limits", {
+            promptChars: retryPrompt.prompt.length,
+            userNotice: retryPrompt.userNotice,
+            userNoticeTitle: retryPrompt.userNoticeTitle,
+          });
+        }
         response = await promptChromeSession({
           session,
           prompt: retryPrompt.prompt,
           signal: controller.signal,
           onText: (content) => {
             if (chatRunIdRef.current !== runId) return;
+            if (suppressAssistantText) return;
             setChatMessages((current) =>
               current.map((item) => (item.id === assistantMessageId ? { ...item, content } : item))
             );
@@ -800,15 +950,17 @@ function SidePanel() {
         });
       }
 
-      if (chatRunIdRef.current !== runId) return true;
+      if (chatRunIdRef.current !== runId) return { used: true, content: response };
       setChatId(null);
-      setChatMessages((current) =>
-        current.map((item) =>
-          item.id === assistantMessageId ? { ...item, content: response } : item
-        )
-      );
+      if (!suppressAssistantText) {
+        setChatMessages((current) =>
+          current.map((item) =>
+            item.id === assistantMessageId ? { ...item, content: response } : item
+          )
+        );
+      }
       setChatProviderDebugStatus("Google Chrome AI");
-      return true;
+      return { used: true, content: response };
     } finally {
       if (chatAbortRef.current === controller) {
         chatAbortRef.current = null;
@@ -824,6 +976,7 @@ function SidePanel() {
     continueConversation,
     history,
     userMessage,
+    suppressAssistantText = false,
   }: {
     activeChatId: string | null;
     assistantMessageId: string;
@@ -831,17 +984,22 @@ function SidePanel() {
     continueConversation: boolean;
     history: ChatUiMessage[];
     userMessage: ChatUiMessage;
-  }) => {
+    suppressAssistantText?: boolean;
+  }): Promise<string | null> => {
     const apiKey = chatApiKey?.trim();
     if (!apiKey) {
       setChatMessages([]);
       setChatId(null);
       setChatError("Add your Euryka API key in Settings to use chat.");
-      return;
+      return null;
     }
 
     const controller = new AbortController();
     chatAbortRef.current = controller;
+    let streamedText = "";
+    if (suppressAssistantText) {
+      logSparkRecommendation("using backend provider");
+    }
 
     try {
       const requestMessages = continueConversation && activeChatId ? [userMessage] : history;
@@ -856,11 +1014,14 @@ function SidePanel() {
         },
         {
           onTextDelta: (delta) => {
-            setChatMessages((current) =>
-              current.map((item) =>
-                item.id === assistantMessageId ? { ...item, content: item.content + delta } : item
-              )
-            );
+            streamedText += delta;
+            if (!suppressAssistantText) {
+              setChatMessages((current) =>
+                current.map((item) =>
+                  item.id === assistantMessageId ? { ...item, content: item.content + delta } : item
+                )
+              );
+            }
           },
           onSource: (source) => {
             setChatSources((current) =>
@@ -877,11 +1038,55 @@ function SidePanel() {
         setChatId(response.chatId);
       }
       setChatProviderDebugStatus("Euryka");
+      return streamedText;
     } finally {
       if (chatAbortRef.current === controller) {
         chatAbortRef.current = null;
       }
     }
+  };
+
+  const finalizeSparkRecommendationResponse = (
+    responseText: string,
+    assistantMessageId: string,
+    sparks: Spark[]
+  ) => {
+    const result = resolveSparkRecommendation(responseText, sparks);
+    if (!result) {
+      logSparkRecommendation("failed to parse or match recommendation response", {
+        availableSparkCount: sparks.length,
+        responseChars: responseText.length,
+        responsePreview: responseText.slice(0, 1200),
+      });
+      setChatMessages((current) =>
+        current.map((item) =>
+          item.id === assistantMessageId
+            ? {
+                ...item,
+                content:
+                  responseText.trim() ||
+                  "We couldn't match a spark recommendation from the model response.",
+              }
+            : item
+        )
+      );
+      return;
+    }
+
+    logSparkRecommendation("matched recommendation", {
+      sparkId: result.spark.id,
+      sparkTitle: result.spark.title,
+      confidence: result.recommendation.confidence,
+      reason: result.recommendation.reason,
+    });
+    setSparkRecommendationResult(result);
+    setChatMessages((current) =>
+      current.map((item) =>
+        item.id === assistantMessageId
+          ? { ...item, content: buildSparkRecommendationAssistantMessage(result) }
+          : item
+      )
+    );
   };
 
   const handleStopChat = () => {
@@ -893,6 +1098,7 @@ function SidePanel() {
 
   const handleBackFromChat = () => {
     handleStopChat();
+    setSparkRecommendationResult(null);
     setShowChatResult(false);
   };
 
@@ -1160,6 +1366,8 @@ function SidePanel() {
                 isStreaming={isChatStreaming}
                 apiKeyAvailable={hasChatApiKey}
                 chatId={chatId}
+                mode={chatMode}
+                sparkRecommendationResult={sparkRecommendationResult}
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
@@ -1177,6 +1385,8 @@ function SidePanel() {
                 onStop={handleStopChat}
                 onOpenSettings={openChatSettings}
                 onOpenThread={handleOpenChatThread}
+                onModeChange={setChatMode}
+                onRunRecommendedSpark={handleUseSpark}
                 onIncludePageContentChange={handleIncludeChatPageContentChange}
                 onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
               />
@@ -1222,6 +1432,7 @@ function SidePanel() {
                 lastFive={prefs?.lastFive ?? []}
                 currentUrl={currentTabUrl}
                 chatApiKeyAvailable={hasChatApiKey}
+                chatMode={chatMode}
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
@@ -1246,6 +1457,7 @@ function SidePanel() {
                 onUseSpark={handleUseSpark}
                 onStartChat={(message) => handleStartChat(message, false)}
                 onOpenChatSettings={openChatSettings}
+                onChatModeChange={setChatMode}
                 onIncludePageContentChange={handleIncludeChatPageContentChange}
                 onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
                 onSelectBrand={setBrand}
@@ -1378,6 +1590,155 @@ function SidePanel() {
   );
 }
 
+function buildSparkCatalog(groups: SparkGroup[]): SparkCatalogItem[] {
+  const byId = new Map<string, SparkCatalogItem>();
+
+  for (const group of groups) {
+    for (const spark of group.sparks) {
+      const groupTitle = spark.group ?? group.title ?? "";
+      const existing = byId.get(spark.id);
+      if (existing) {
+        if (groupTitle && !existing.groups.includes(groupTitle)) {
+          existing.groups.push(groupTitle);
+        }
+        continue;
+      }
+
+      byId.set(spark.id, {
+        id: spark.id,
+        title: spark.title,
+        description: spark.description ?? "",
+        groups: groupTitle ? [groupTitle] : [],
+      });
+    }
+  }
+
+  return [...byId.values()];
+}
+
+function summarizeSparkGroups(groups: SparkGroup[]) {
+  return {
+    groupCount: groups.length,
+    sparkCount: groups.reduce((count, group) => count + group.sparks.length, 0),
+    groups: groups.map((group) => ({
+      title: group.title,
+      descriptionChars: group.description?.length ?? 0,
+      sparkCount: group.sparks.length,
+    })),
+  };
+}
+
+function summarizeSparkCatalog(groups: SparkGroup[], catalog: SparkCatalogItem[]) {
+  const summary = summarizeSparkGroups(groups);
+  return {
+    ...summary,
+    uniqueSparkCount: catalog.length,
+  };
+}
+
+function buildSparkCatalogText(sparks: SparkCatalogItem[]): string {
+  return sparks
+    .map((spark, index) =>
+      [
+        `${index + 1}.`,
+        `id=${compactText(spark.id)}`,
+        `title=${compactText(spark.title)}`,
+        `desc=${compactText(spark.description)}`,
+        `groups=${compactText(spark.groups.join(", "))}`,
+      ].join(" ")
+    )
+    .join("\n");
+}
+
+function compactText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function buildSparkRecommendationUserPrompt(
+  userIntent: string,
+  sparks: SparkCatalogItem[]
+): string {
+  const catalogText = buildSparkCatalogText(sparks);
+  return [
+    "You are recommending one Euryka spark for the user's intent.",
+    "Choose exactly one spark from the provided catalog.",
+    "Return strict JSON only. Do not include markdown, commentary, or extra keys.",
+    'The JSON shape is: {"sparkId":"...","sparkTitle":"...","reason":"...","confidence":0.0}',
+    "Use sparkId as the authoritative identifier.",
+    "",
+    `User intent:\n${userIntent}`,
+    "",
+    `Spark catalog:\n${catalogText}`,
+  ].join("\n");
+}
+
+function resolveSparkRecommendation(
+  responseText: string,
+  sparks: Spark[]
+): SparkRecommendationResult | null {
+  const parsed = parseJsonObject(responseText);
+  if (!parsed) return null;
+
+  const sparkId = readString(parsed.sparkId);
+  const sparkTitle = readString(parsed.sparkTitle);
+  const normalizedTitle = normalizeSparkName(sparkTitle);
+  const spark =
+    (sparkId ? sparks.find((item) => item.id === sparkId) : undefined) ??
+    (normalizedTitle
+      ? sparks.find((item) => normalizeSparkName(item.title) === normalizedTitle)
+      : undefined);
+
+  if (!spark) return null;
+
+  const reason = readString(parsed.reason) || "This spark best matches the request you described.";
+  const confidence = readConfidence(parsed.confidence);
+
+  return {
+    spark,
+    rawText: responseText,
+    recommendation: {
+      sparkId: spark.id,
+      sparkTitle: spark.title,
+      reason,
+      ...(confidence !== undefined ? { confidence } : {}),
+    },
+  };
+}
+
+function buildSparkRecommendationAssistantMessage(result: SparkRecommendationResult): string {
+  return `I recommend **${result.spark.title}**.\n\n${result.recommendation.reason}`;
+}
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const candidate = fenced ?? trimmed.slice(trimmed.indexOf("{"), trimmed.lastIndexOf("}") + 1);
+  if (!candidate || !candidate.startsWith("{") || !candidate.endsWith("}")) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readConfidence(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value >= 0 && value <= 1) return value;
+  if (value > 1 && value <= 100) return value / 100;
+  return undefined;
+}
+
+function normalizeSparkName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 async function getOrCreateDefaultCollectionId(): Promise<string> {
   const collections = await collectionsStorage.getValue();
   logCollectionSave("Loaded collections for default collection lookup", {
@@ -1442,6 +1803,18 @@ const DEFAULT_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
   pageContentLimit: CHROME_PAGE_CONTENT_CHAR_LIMIT,
   selectedTextLimit: CHROME_SELECTED_TEXT_CHAR_LIMIT,
   historyLimit: CHROME_HISTORY_CHAR_LIMIT,
+};
+
+const SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
+  pageContentLimit: CHROME_SPARK_RECOMMENDATION_PAGE_CONTENT_CHAR_LIMIT,
+  selectedTextLimit: CHROME_SPARK_RECOMMENDATION_SELECTED_TEXT_CHAR_LIMIT,
+  historyLimit: CHROME_SPARK_RECOMMENDATION_HISTORY_CHAR_LIMIT,
+};
+
+const SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS: ChromePromptLimits = {
+  pageContentLimit: CHROME_SPARK_RECOMMENDATION_RETRY_PAGE_CONTENT_CHAR_LIMIT,
+  selectedTextLimit: CHROME_SPARK_RECOMMENDATION_RETRY_SELECTED_TEXT_CHAR_LIMIT,
+  historyLimit: CHROME_SPARK_RECOMMENDATION_RETRY_HISTORY_CHAR_LIMIT,
 };
 
 function buildChromeChatPrompt(

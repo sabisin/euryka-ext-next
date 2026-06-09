@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useSparks } from "../../hooks/use-sparks";
-import type { Brand, Project, Spark } from "../../lib/types";
+import type { Brand, ChatMode, Project, Spark } from "../../lib/types";
 import { hexToRgba } from "../../lib/utils";
 import { IconWrapper } from "../shared/IconWrapper";
 import { ChatBox } from "./ChatBox";
@@ -26,6 +26,7 @@ interface Props {
     onClick: () => void;
   };
   chatApiKeyAvailable: boolean;
+  chatMode: ChatMode;
   includePageContent: boolean;
   includeSelectedText: boolean;
   pageContentCharCount: number | null;
@@ -38,6 +39,7 @@ interface Props {
   onUseSpark: (spark: Spark) => void;
   onStartChat: (message: string) => void;
   onOpenChatSettings: () => void;
+  onChatModeChange: (mode: ChatMode) => void;
   onIncludePageContentChange: (checked: boolean) => void;
   onIncludeSelectedTextChange: (checked: boolean) => void;
   onSelectBrand: (id: string | null) => void;
@@ -53,6 +55,7 @@ export function SparksGallery({
   currentUrl,
   prospector,
   chatApiKeyAvailable,
+  chatMode,
   includePageContent,
   includeSelectedText,
   pageContentCharCount,
@@ -65,6 +68,7 @@ export function SparksGallery({
   onUseSpark,
   onStartChat,
   onOpenChatSettings,
+  onChatModeChange,
   onIncludePageContentChange,
   onIncludeSelectedTextChange,
   onSelectBrand,
@@ -113,6 +117,7 @@ export function SparksGallery({
 
         <ChatBox
           apiKeyAvailable={chatApiKeyAvailable}
+          mode={chatMode}
           includePageContent={includePageContent}
           includeSelectedText={includeSelectedText}
           pageContentCharCount={pageContentCharCount}
@@ -124,6 +129,7 @@ export function SparksGallery({
           providerStatus={chatProviderStatus}
           onSubmit={onStartChat}
           onOpenSettings={onOpenChatSettings}
+          onModeChange={onChatModeChange}
           onIncludePageContentChange={onIncludePageContentChange}
           onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />

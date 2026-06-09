@@ -1,6 +1,7 @@
+import { FileText, Highlighter, KeyRound, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { FileText, Highlighter, KeyRound, TriangleAlert } from "lucide-react";
 import ekIcon from "../../assets/ek-icon.svg";
+import type { ChatMode } from "../../lib/types";
 import { PromptInput, PromptInputToolButton } from "../shared/PromptInput";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   compact?: boolean;
   includePageContent?: boolean;
   includeSelectedText?: boolean;
+  mode?: ChatMode;
   pageContentCharCount?: number | null;
   selectedTextCharCount?: number | null;
   pageContentExceedsLimit?: boolean;
@@ -20,6 +22,7 @@ interface Props {
   onOpenSettings: () => void;
   onIncludePageContentChange?: (checked: boolean) => void;
   onIncludeSelectedTextChange?: (checked: boolean) => void;
+  onModeChange?: (mode: ChatMode) => void;
 }
 
 export function ChatBox({
@@ -28,6 +31,7 @@ export function ChatBox({
   compact = false,
   includePageContent = false,
   includeSelectedText = false,
+  mode = "chat",
   pageContentCharCount = null,
   selectedTextCharCount = null,
   pageContentExceedsLimit = false,
@@ -39,6 +43,7 @@ export function ChatBox({
   onOpenSettings,
   onIncludePageContentChange,
   onIncludeSelectedTextChange,
+  onModeChange,
 }: Props) {
   const [message, setMessage] = useState("");
 
@@ -59,6 +64,17 @@ export function ChatBox({
         submitStatus={isStreaming ? "streaming" : "ready"}
         tools={
           <>
+            <PromptInputToolButton
+              active={mode === "spark-recommendation"}
+              disabled={isStreaming}
+              onClick={() =>
+                onModeChange?.(mode === "spark-recommendation" ? "chat" : "spark-recommendation")
+              }
+              title="Find the best spark"
+            >
+              <Sparkles size={13} />
+              <span>Find Spark</span>
+            </PromptInputToolButton>
             <PromptInputToolButton
               active={includePageContent}
               disabled={isStreaming}
