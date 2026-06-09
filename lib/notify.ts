@@ -1,7 +1,10 @@
+import { debugLog } from "./debug";
+
 const NOTIFY_URL = import.meta.env.WXT_NOTIFY_URL as string | undefined;
+const log = debugLog("[Euryka notify]");
 
 export async function notifySlack(slackMemberId: string, text: string): Promise<void> {
-  console.info("[Euryka notify] Slack notification requested", {
+  log("Slack notification requested", {
     hasNotifyUrl: Boolean(NOTIFY_URL),
     notifyUrl: NOTIFY_URL,
     slackMemberId,
@@ -36,7 +39,7 @@ export async function notifySlack(slackMemberId: string, text: string): Promise<
       return;
     }
 
-    console.info("[Euryka notify] Notify server accepted Slack notification", {
+    log("Notify server accepted Slack notification", {
       status: response.status,
       body: responseText,
     });

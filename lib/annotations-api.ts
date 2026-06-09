@@ -1,6 +1,9 @@
+import { debugLog } from "./debug";
+
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
 const ANNOTATIONS_PATH = "/api/v1/extension/annotations";
 const LOG_PREFIX = "[Euryka annotations API]";
+const log = debugLog(LOG_PREFIX);
 const inFlightListRequests = new Map<string, Promise<AnnotationListResponse>>();
 
 export interface AnnotationSelector {
@@ -157,7 +160,7 @@ async function request<T>(
   const requestUrl = typeof url === "string" ? `${BASE_URL}${url}` : url;
   const startedAt = Date.now();
 
-  console.info(`${LOG_PREFIX} request started`, {
+  log("request started", {
     operation: logContext.operation,
     method,
     url: String(requestUrl),
@@ -191,7 +194,7 @@ async function request<T>(
   const data = contentType.includes("application/json")
     ? ((await res.json()) as T)
     : (undefined as T);
-  console.info(`${LOG_PREFIX} request succeeded`, {
+  log("request succeeded", {
     operation: logContext.operation,
     method,
     url: String(requestUrl),

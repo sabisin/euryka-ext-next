@@ -4,6 +4,7 @@ import { useSessions } from "../../hooks/use-sessions";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import { sparkCacheStorage } from "../../lib/storage";
 import { firestoreTsToDate } from "../../lib/utils";
+import { debugLog } from "../../lib/debug";
 import type { Session } from "../../lib/types";
 import { SessionCard } from "./SessionCard";
 
@@ -14,9 +15,8 @@ interface Props {
 
 const FETCH_COOLDOWN_MS = 1000;
 
-function logHistoryPagination(message: string, details?: unknown) {
-  console.info(`[Euryka history] ${message}`, details ?? "");
-}
+const logHistoryPagination = debugLog("[Euryka history]");
+
 
 function groupByDate(sessions: Session[]): Record<string, Session[]> {
   return sessions.reduce<Record<string, Session[]>>((acc, session) => {

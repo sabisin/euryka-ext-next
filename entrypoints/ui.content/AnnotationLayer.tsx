@@ -5,6 +5,7 @@ import {
   type Annotation,
 } from "../../lib/annotations-api";
 import { onMessage, sendMessage } from "../../lib/messaging";
+import { debugLog } from "../../lib/debug";
 import type { UserPrefs } from "../../lib/types";
 import { identityColor, identityInitial } from "../../lib/utils";
 import { Button } from "../../components/shared/Button";
@@ -41,9 +42,7 @@ const ANNOTATION_UPDATED_EVENT = "annotationUpdated";
 const ANNOTATION_DELETED_EVENT = "annotationDeleted";
 const TOGGLE_ANNOTATIONS_SHORTCUT = "a";
 
-function debugAnnotations(message: string, details?: unknown) {
-  console.info(`[Euryka annotations] ${message}`, details ?? "");
-}
+const debugAnnotations = debugLog("[Euryka annotations]");
 
 function debugAnnotationPosition(message: string, details?: unknown) {
   if (!DEBUG_ANNOTATION_POSITIONING) return;
