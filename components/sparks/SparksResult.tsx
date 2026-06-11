@@ -58,7 +58,7 @@ export function SparksResult({ result, sessionId, sourceUrl, spark, wsId }: Prop
   );
 }
 
-function getHostname(url: string | undefined): string {
+function getHostname(url: string | null | undefined): string {
   if (!url) return "";
   try {
     return new URL(url).hostname.replace(/^www\./, "");

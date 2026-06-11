@@ -18,7 +18,8 @@ import {
   sparkCacheStorage,
   userPrefs,
 } from "../../lib/storage";
-import { decodeJwt, fetchAndStoreToken, getValidToken, runWithTokenRetry } from "../../lib/auth";
+import { decodeJwt, getValidToken, runWithTokenRetry } from "../../lib/auth";
+import type { LanguageModelSession } from "../../lib/chrome-ai";
 import { DEBUG, debugLog } from "../../lib/debug";
 import { analyseImage as apiAnalyseImage, fetchSparks } from "../../lib/api";
 import { openChatThread, streamChatResponse } from "../../lib/chat-api";
@@ -89,28 +90,6 @@ const THIS_TAB_ID = (() => {
   return v ? Number(v) : null;
 })();
 
-type PromptAvailability = "unavailable" | "downloadable" | "downloading" | "available";
-
-interface LanguageModelSession {
-  prompt: (input: string, options?: { signal?: AbortSignal }) => Promise<string>;
-  promptStreaming?: (
-    input: string,
-    options?: { signal?: AbortSignal }
-  ) => ReadableStream<string> | AsyncIterable<string>;
-  destroy?: () => void;
-}
-
-interface LanguageModelApi {
-  availability: (options?: unknown) => Promise<PromptAvailability>;
-  create: (options?: unknown) => Promise<LanguageModelSession>;
-}
-
-declare global {
-  interface Window {
-    LanguageModel?: LanguageModelApi;
-  }
-}
-
 const CHROME_CHAT_SESSION_OPTIONS = {
   expectedInputs: [{ type: "text", languages: ["en"] }],
   expectedOutputs: [{ type: "text", languages: ["en"] }],
@@ -156,27 +135,6 @@ interface ChatContextLimitState {
   exceedsPageContentLimit: boolean;
   exceedsSelectedTextLimit: boolean;
 }
-
-interface ExtensionPort {
-  postMessage: (message: unknown) => void;
-}
-
-interface ExtensionTab {
-  id?: number;
-}
-
-declare const chrome: {
-  runtime: {
-    connect: (connectInfo: { name: string }) => ExtensionPort;
-  };
-  tabs: {
-    create: (createProperties: { url: string }) => void;
-    query: (queryInfo: {
-      active: boolean;
-      currentWindow: boolean;
-    }) => Promise<ExtensionTab[]>;
-  };
-};
 
 function SidePanel() {
   const [auth] = useStorageItem<AuthState>(authStorage);
@@ -318,11 +276,12 @@ function SidePanel() {
     };
   }, []);
 
-  // ── On mount: auth + tracker port + flush pending actions ────────────────
+  // ── On mount: tracker port + flush pending actions + auth ────────────────
   useEffect(() => {
     (async () => {
-      const token = await fetchAndStoreToken();
-      if (!token) return;
+      // Register with the background regardless of auth state — otherwise a
+      // logged-out panel is never tracked and queued actions never flush,
+      // even after the user logs in.
       // Prefer the tabId injected via URL (set by background's setOptions path).
       // Fall back to active tab query in the rare case the URL param is missing.
       let tabId = THIS_TAB_ID;
@@ -336,8 +295,11 @@ function SidePanel() {
       if (tabId) {
         const port = chrome.runtime.connect({ name: "sidePanelTracker" });
         port.postMessage({ type: "PING", tabId });
-        await sendMessage("sidePanelReady", { tabId });
+        await sendMessage("sidePanelReady", { tabId }).catch(() => {});
       }
+      // Refresh only when the stored token is missing or expired — a forced
+      // refresh here used to log the user out on any transient network error.
+      await getValidToken();
     })();
   }, []);
 
@@ -367,10 +329,13 @@ function SidePanel() {
     setPendingAction(null);
     if (action.type === "analyseImage") {
       setSelectedImageUrl(action.imageUrl);
-      handleAnalyseImageRef.current({
-        url: action.imageUrl,
-        source: "browser",
-      });
+      handleAnalyseImageRef.current(
+        {
+          url: action.imageUrl,
+          source: "browser",
+        },
+        action.pageUrl
+      );
     } else if (action.type === "triggerSpark") {
       const groups = queryClient.getQueryData<SparkGroup[]>(["sparks"]);
       const spark = groups?.flatMap((g) => g.sparks).find((s) => s.id === action.sparkId);
@@ -401,24 +366,34 @@ function SidePanel() {
     setLoadingSpark(true);
     setShowSparkResult(true, "", undefined, spark);
 
-    let pageText = await pageTextStorage.getValue();
-    let pageUrl = await pageUrlStorage.getValue();
-    let selectedText = await selectedTextStorage.getValue();
+    // Context comes from THIS panel's tab only. The session storage values are
+    // global (overwritten by whichever tab was last active/navigated), so they
+    // are used as a fallback only when they were captured for this same URL.
+    let pageUrl = "";
+    let pageText = "";
+    let selectedText = "";
 
     if (THIS_TAB_ID !== null) {
       const [activeUrl, extractedText, currentSelection] = await Promise.all([
-        sendMessage("getTabUrl", { tabId: THIS_TAB_ID }),
+        sendMessage("getTabUrl", { tabId: THIS_TAB_ID }).catch(() => null),
         sendMessage("extractText", undefined, THIS_TAB_ID).catch(() => null),
         sendMessage("getSelectedText", undefined, THIS_TAB_ID).catch(() => null),
       ]);
-      pageUrl = activeUrl.url || pageUrl;
-      pageText = extractedText?.text || pageText;
-      selectedText = currentSelection?.text || selectedText;
-      await Promise.all([
-        pageUrlStorage.setValue(pageUrl),
-        pageTextStorage.setValue(pageText),
-        selectedTextStorage.setValue(selectedText),
-      ]);
+      pageUrl = activeUrl?.url || currentTabUrl || "";
+      pageText = extractedText?.text || "";
+      selectedText = currentSelection?.text || "";
+
+      if (!pageText || !selectedText) {
+        const [storedUrl, storedText, storedSelection] = await Promise.all([
+          pageUrlStorage.getValue(),
+          pageTextStorage.getValue(),
+          selectedTextStorage.getValue(),
+        ]);
+        if (storedUrl && storedUrl === pageUrl) {
+          pageText = pageText || storedText;
+          selectedText = selectedText || storedSelection;
+        }
+      }
     }
 
     try {
@@ -498,7 +473,7 @@ function SidePanel() {
   };
 
   // ── Image analysis ────────────────────────────────────────────────────────
-  const handleAnalyseImage = async (dragResult: DragImageResult) => {
+  const handleAnalyseImage = async (dragResult: DragImageResult, pageUrlOverride?: string) => {
     if (!selectedWorkspaceId) return;
     handleStopChat();
     setShowChatResult(false);
@@ -506,10 +481,21 @@ function SidePanel() {
     setLoadingImage(true);
     setImageResult(null);
 
-    const [pageUrl, pageText] = await Promise.all([
-      pageUrlStorage.getValue(),
-      pageTextStorage.getValue(),
-    ]);
+    // Page context must come from THIS panel's tab. The global session storage
+    // holds whichever tab was last active/navigated, which can be a different
+    // tab entirely — never send that to the API.
+    let pageUrl = pageUrlOverride ?? "";
+    let pageText = "";
+    if (THIS_TAB_ID !== null) {
+      const [tabUrl, extracted] = await Promise.all([
+        pageUrlOverride
+          ? Promise.resolve(null)
+          : sendMessage("getTabUrl", { tabId: THIS_TAB_ID }).catch(() => null),
+        sendMessage("extractText", undefined, THIS_TAB_ID).catch(() => null),
+      ]);
+      pageUrl = pageUrlOverride ?? tabUrl?.url ?? "";
+      pageText = extracted?.text ?? "";
+    }
 
     try {
       let imageUrl = dragResult.url;
@@ -759,7 +745,15 @@ function SidePanel() {
     }
 
     const context = await fetchChatPromptContext();
-    if (!context) return;
+    if (!context) {
+      // fetchChatPromptContext already set a chat error — still show the
+      // user's message so their typed text isn't silently lost.
+      setChatMessages([
+        ...(shouldContinueConversation ? chatMessages.filter((item) => item.content.trim()) : []),
+        userMessage,
+      ]);
+      return;
+    }
 
     const modelUserMessage = isSparkRecommendation
       ? {
@@ -1952,8 +1946,15 @@ function clipEnd(text: string, limit: number) {
 }
 
 function isInputTooLargeError(error: unknown): boolean {
+  // Chrome's Prompt API signals an oversized prompt with a QuotaExceededError
+  // DOMException or an "input is too large" message. Keep this check narrow:
+  // matching loosely (any "context"/"quota" mention) used to swallow unrelated
+  // failures and retry them with trimmed context instead of surfacing them.
+  if (error instanceof DOMException && error.name === "QuotaExceededError") return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /input\s+is\s+too\s+large|too\s+large|quota|context/i.test(message);
+  return /input\s+is\s+too\s+large|too\s+many\s+tokens|exceeds?\s+(the\s+)?(context|quota|token)/i.test(
+    message
+  );
 }
 
 function getChatContextLimitState(counts: ChatContextCounts): ChatContextLimitState {

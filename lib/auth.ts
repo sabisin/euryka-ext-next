@@ -32,7 +32,11 @@ export async function fetchAndStoreToken(): Promise<string | null> {
       credentials: "include",
     });
     if (!res.ok) {
-      await clearAuth();
+      // Only a definitive auth rejection invalidates the stored token. A
+      // backend hiccup (5xx, gateway error) must not log the user out.
+      if (res.status === 401 || res.status === 403) {
+        await clearAuth();
+      }
       return null;
     }
     const { token } = (await res.json()) as { token: string };
@@ -48,7 +52,7 @@ export async function fetchAndStoreToken(): Promise<string | null> {
     });
     return token;
   } catch {
-    await clearAuth();
+    // Network failure — keep any existing token; it may still be valid.
     return null;
   }
 }
@@ -72,7 +76,8 @@ export async function runWithTokenRetry<T>(fn: (token: string) => Promise<T>): P
     if (err instanceof Response && (err.status === 401 || err.status === 403)) {
       const fresh = await fetchAndStoreToken();
       if (!fresh) {
-        await clearAuth();
+        // fetchAndStoreToken already cleared auth if the refresh was rejected;
+        // for a network failure we keep the stored token and just report.
         throw new Error("Token refresh failed");
       }
       return fn(fresh);

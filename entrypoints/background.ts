@@ -305,14 +305,4 @@ export default defineBackground(() => {
     const tab = await chrome.tabs.get(data.tabId);
     return { url: tab.url ?? "" };
   });
-
-  onMessage("fetchImage", async ({ data }) => {
-    const res = await fetch(data.url, {
-      headers: { "User-Agent": navigator.userAgent },
-    });
-    if (!res.ok) throw new Error("Image fetch failed");
-    const buffer = await res.arrayBuffer();
-    const mime = res.headers.get("content-type") ?? "image/jpeg";
-    return { data: Array.from(new Uint8Array(buffer)), mime };
-  });
 });

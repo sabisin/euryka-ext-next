@@ -19,13 +19,14 @@ export function getDraggedImage(e: DragEvent): DragImageResult | null {
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
       throw new Error(`File too large. Max ${MAX_SIZE_MB} MB.`);
     }
+    const objectUrl = URL.createObjectURL(file);
     return {
-      url: URL.createObjectURL(file),
+      url: objectUrl,
       source: "filesystem",
       file,
       name: file.name,
       mime: file.type,
-      objectUrl: URL.createObjectURL(file),
+      objectUrl,
     };
   }
 

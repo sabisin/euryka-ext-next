@@ -1,25 +1,8 @@
 import { Cpu, Send } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import type { LanguageModelSession } from "../../lib/chrome-ai";
 import { sendMessage } from "../../lib/messaging";
 import { Button } from "../shared/Button";
-
-type PromptAvailability = "unavailable" | "downloadable" | "downloading" | "available";
-
-interface LanguageModelSession {
-  prompt: (input: string) => Promise<string>;
-  destroy?: () => void;
-}
-
-interface LanguageModelApi {
-  availability: (options?: unknown) => Promise<PromptAvailability>;
-  create: (options?: unknown) => Promise<LanguageModelSession>;
-}
-
-declare global {
-  interface Window {
-    LanguageModel?: LanguageModelApi;
-  }
-}
 
 const SESSION_OPTIONS = {
   expectedInputs: [{ type: "text", languages: ["en"] }],

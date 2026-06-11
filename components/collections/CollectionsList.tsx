@@ -94,7 +94,7 @@ export function CollectionsList({ onSelectCollection, onSelectItem }: Props) {
   const startEditing = (collection: Collection) => {
     setEditingId(collection.id);
     setEditName(collection.name);
-    setEditEmoji(collection.emoji);
+    setEditEmoji(collection.emoji ?? EMOJIS[0]);
     setEditEmojiPickerOpen(false);
     setTimeout(() => editInputRef.current?.focus(), 50);
   };

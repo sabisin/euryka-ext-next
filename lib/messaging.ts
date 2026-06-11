@@ -34,7 +34,6 @@ interface ProtocolMap {
   sidePanelReady(data: { tabId: number }): void;
   keepAlive(): void;
   reset(): void;
-  fetchImage(data: { url: string }): { data: number[]; mime: string };
   getTabUrl(data: { tabId: number }): { url: string };
   saveToCollection(data: { type: CollectionItemType; title: string; content: string; thumbnail?: string; sourceUrl: string; forTabId?: number }): void;
 }
