@@ -29,11 +29,16 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@tailwindcss/vite": "^4.1.6",
+    "@types/chrome": "^0.1.42",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.4",
     "@wxt-dev/module-react": "^1.1.0",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.3",
-    "wxt": "^0.20.25"
+    "wxt": "^0.20.26"
+  },
+  "overrides": {
+    "shell-quote": "1.8.4",
+    "tmp": "0.2.7"
   }
 }
