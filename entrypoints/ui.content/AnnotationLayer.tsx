@@ -90,7 +90,7 @@ function getXPath(el: Element): string {
   let current: Element | null = el;
   while (current && current !== document.body) {
     const tag = current.tagName.toLowerCase();
-    const parent = current.parentElement;
+    const parent: Element | null = current.parentElement;
     if (parent) {
       const siblings = Array.from(parent.children).filter((c) => c.tagName === current!.tagName);
       parts.unshift(siblings.length > 1 ? `${tag}[${siblings.indexOf(current) + 1}]` : tag);
@@ -346,19 +346,24 @@ export function AnnotationLayer() {
   const refreshAnnotations = async () => {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    const targetUrl = getCurrentTargetUrl();
     try {
       const results: Annotation[] = [];
       let cursor: string | undefined;
 
       do {
         const response = await sendMessage("listAnnotations", {
-          targetUrl: getCurrentTargetUrl(),
+          targetUrl,
           limit: 100,
           cursor,
         });
         results.push(...response.annotations);
         cursor = response.nextCursor ?? undefined;
       } while (cursor);
+
+      // An SPA navigation may have happened while the request was in flight —
+      // don't apply results that belong to the previous URL.
+      if (getCurrentTargetUrl() !== targetUrl) return;
 
       setAnnotations(results);
       if (
@@ -401,7 +406,8 @@ export function AnnotationLayer() {
           return current === next ? current : next;
         });
         if (prefs?.theme === "dark" || prefs?.theme === "light") {
-          setTheme((current) => current === prefs.theme ? current : prefs.theme);
+          const nextTheme = prefs.theme;
+          setTheme((current) => current === nextTheme ? current : nextTheme);
         } else {
           const nextTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
           setTheme((current) => current === nextTheme ? current : nextTheme);
@@ -515,9 +521,28 @@ export function AnnotationLayer() {
     document.addEventListener("visibilitychange", refreshOnVisible);
     window.addEventListener("focus", refreshOnVisible);
 
+    // SPA navigations (pushState/replaceState) change the URL without any
+    // visibility/focus event, leaving the previous page's markers on screen.
+    // Poll the URL (history events alone miss pushState) and reload on change.
+    let lastUrl = getCurrentTargetUrl();
+    const handleUrlChange = () => {
+      if (getCurrentTargetUrl() === lastUrl) return;
+      lastUrl = getCurrentTargetUrl();
+      setAnnotations([]);
+      setActiveAnnotationId(null);
+      setNoteDraft("");
+      void refreshAnnotations();
+    };
+    const urlInterval = window.setInterval(handleUrlChange, 1_000);
+    window.addEventListener("popstate", handleUrlChange);
+    window.addEventListener("hashchange", handleUrlChange);
+
     return () => {
       document.removeEventListener("visibilitychange", refreshOnVisible);
       window.removeEventListener("focus", refreshOnVisible);
+      window.clearInterval(urlInterval);
+      window.removeEventListener("popstate", handleUrlChange);
+      window.removeEventListener("hashchange", handleUrlChange);
     };
   }, []);
 
