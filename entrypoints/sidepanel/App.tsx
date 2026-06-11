@@ -73,6 +73,7 @@ const DEFAULT_USER_PREFS: UserPrefs = {
   lastUsedSpark: null,
   lastFive: [],
 };
+const ENABLE_EURYKA_CHAT_PROVIDER = false;
 const DEFAULT_COLLECTION_NAME = "Saved items";
 let collectionSaveQueue = Promise.resolve();
 
@@ -242,6 +243,7 @@ function SidePanel() {
 
   const isLoggedIn = !!auth?.token;
   const hasChatApiKey = Boolean(chatApiKey?.trim());
+  const chatApiKeyPromptAvailable = ENABLE_EURYKA_CHAT_PROVIDER && hasChatApiKey;
   const chatAbortRef = useRef<AbortController | null>(null);
   const chatRunIdRef = useRef(0);
   const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
@@ -816,6 +818,13 @@ function SidePanel() {
         return;
       }
 
+      if (!ENABLE_EURYKA_CHAT_PROVIDER) {
+        setChatError(
+          "Google Chrome AI is not available in this browser yet. Update Chrome and make sure built-in AI is enabled."
+        );
+        return;
+      }
+
       const backendContent = await runBackendChat({
         activeChatId,
         assistantMessageId: assistantMessage.id,
@@ -861,13 +870,13 @@ function SidePanel() {
   }): Promise<{ used: boolean; content: string }> => {
     const languageModel = window.LanguageModel;
     if (!languageModel) {
-      setChatProviderDebugStatus("Euryka");
+      setChatProviderDebugStatus("Google unavailable");
       return { used: false, content: "" };
     }
 
     const availability = await languageModel.availability(CHROME_CHAT_SESSION_OPTIONS);
     if (availability === "unavailable") {
-      setChatProviderDebugStatus("Euryka");
+      setChatProviderDebugStatus("Google unavailable");
       return { used: false, content: "" };
     }
 
@@ -1364,7 +1373,7 @@ function SidePanel() {
                 sources={chatSources}
                 error={chatError}
                 isStreaming={isChatStreaming}
-                apiKeyAvailable={hasChatApiKey}
+                apiKeyAvailable={!ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable}
                 chatId={chatId}
                 mode={chatMode}
                 sparkRecommendationResult={sparkRecommendationResult}
@@ -1431,7 +1440,7 @@ function SidePanel() {
                 projects={projects}
                 lastFive={prefs?.lastFive ?? []}
                 currentUrl={currentTabUrl}
-                chatApiKeyAvailable={hasChatApiKey}
+                chatApiKeyAvailable={!ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable}
                 chatMode={chatMode}
                 includePageContent={includeChatPageContent}
                 includeSelectedText={includeChatSelectedText}
@@ -1503,11 +1512,13 @@ function SidePanel() {
             )
           ) : currentPage === "settings" ? (
             <div className="flex flex-col gap-px overflow-y-auto">
-              <ChatApiKeySettings
-                apiKey={chatApiKey ?? ""}
-                onSave={setChatApiKey}
-                onRemove={() => setChatApiKey("")}
-              />
+              {ENABLE_EURYKA_CHAT_PROVIDER && (
+                <ChatApiKeySettings
+                  apiKey={chatApiKey ?? ""}
+                  onSave={setChatApiKey}
+                  onRemove={() => setChatApiKey("")}
+                />
+              )}
               <div className="flex items-center justify-between border-b border-border px-4 py-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">Theme</p>

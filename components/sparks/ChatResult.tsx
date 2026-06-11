@@ -92,29 +92,6 @@ export function ChatResult({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-background px-4 py-3">
-        <ChatBox
-          compact
-          apiKeyAvailable={apiKeyAvailable}
-          isStreaming={isStreaming}
-          mode={mode}
-          includePageContent={includePageContent}
-          includeSelectedText={includeSelectedText}
-          pageContentCharCount={pageContentCharCount}
-          selectedTextCharCount={selectedTextCharCount}
-          pageContentExceedsLimit={pageContentExceedsLimit}
-          selectedTextExceedsLimit={selectedTextExceedsLimit}
-          contextStatus={chatContextStatus}
-          contextStatusTitle={chatContextStatusTitle}
-          providerStatus={chatProviderStatus}
-          onSubmit={onSubmit}
-          onOpenSettings={onOpenSettings}
-          onModeChange={onModeChange}
-          onIncludePageContentChange={onIncludePageContentChange}
-          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
-        />
-      </div>
-
       <div className="ek-scroll flex-1 overflow-y-auto px-4 py-4">
         <div className="flex flex-col gap-4">
           {messages.map((message) => (
@@ -218,6 +195,27 @@ export function ChatResult({
             </Button>
           )}
         </div>
+
+        <ChatBox
+          compact
+          apiKeyAvailable={apiKeyAvailable}
+          isStreaming={isStreaming}
+          mode={mode}
+          includePageContent={includePageContent}
+          includeSelectedText={includeSelectedText}
+          pageContentCharCount={pageContentCharCount}
+          selectedTextCharCount={selectedTextCharCount}
+          pageContentExceedsLimit={pageContentExceedsLimit}
+          selectedTextExceedsLimit={selectedTextExceedsLimit}
+          contextStatus={chatContextStatus}
+          contextStatusTitle={chatContextStatusTitle}
+          providerStatus={chatProviderStatus}
+          onSubmit={onSubmit}
+          onOpenSettings={onOpenSettings}
+          onModeChange={onModeChange}
+          onIncludePageContentChange={onIncludePageContentChange}
+          onIncludeSelectedTextChange={onIncludeSelectedTextChange}
+        />
       </div>
     </div>
   );
@@ -234,7 +232,7 @@ function RecommendedSparkCard({
   const color = spark.color || "#FF7074";
 
   return (
-    <div className="rounded-md border border-border bg-card p-3 text-card-foreground shadow-sm">
+    <div className="w-full max-w-md rounded-md border border-border bg-card p-3 text-card-foreground shadow-sm">
       <div className="flex items-start gap-3">
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
