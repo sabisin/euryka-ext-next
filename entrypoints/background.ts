@@ -21,6 +21,8 @@ import {
 // NOT used for toggle decisions; toggle works via the broadcast self-close trick below).
 const openSidePanelTabs = new Set<number>();
 const TOGGLE_ANNOTATIONS_COMMAND = "toggle-annotations";
+const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+const INTERNAL_THREAD_REDIRECT_RULE_ID = 1;
 
 // Queue actions that arrive before side panel sends sidePanelReady
 const pendingActions = new Map<
@@ -38,6 +40,42 @@ const logCollectionSave = debugLog("[Euryka collections]");
 
 function isTrackablePageUrl(url: string | undefined): url is string {
   return Boolean(url && /^https?:\/\//i.test(url));
+}
+
+function correctInternalThreadUrl(url: string): string | null {
+  try {
+    const base = new URL(BASE_URL);
+    const target = new URL(url);
+    if (target.hostname !== "0.0.0.0") return null;
+    if (!/^\/ws\/[^/]+\/threads\/[^/]+\/?$/.test(target.pathname)) return null;
+    return new URL(`${target.pathname}${target.search}${target.hash}`, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+async function configureInternalThreadRedirect() {
+  const base = new URL(BASE_URL);
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [INTERNAL_THREAD_REDIRECT_RULE_ID],
+    addRules: [
+      {
+        id: INTERNAL_THREAD_REDIRECT_RULE_ID,
+        priority: 1,
+        action: {
+          type: "redirect",
+          redirect: {
+            regexSubstitution: `${base.origin}\\2`,
+          },
+        },
+        condition: {
+          regexFilter:
+            "^https?://0\\.0\\.0\\.0(:[0-9]+)?(/ws/[^/]+/threads/[^/?#]+.*)$",
+          resourceTypes: ["main_frame"],
+        },
+      },
+    ],
+  });
 }
 
 async function toggleAnnotationsHidden() {
@@ -61,6 +99,12 @@ function bindAndOpen(tabId: number, windowId?: number) {
 }
 
 export default defineBackground(() => {
+  // Rewrite the backend's internal thread redirect before it reaches the tab,
+  // preventing 0.0.0.0 from flashing in the address bar.
+  void configureInternalThreadRedirect().catch((error) => {
+    console.error("Failed to configure the Euryka thread redirect", error);
+  });
+
   // ─── Install ───────────────────────────────────────────────────────────────
   chrome.runtime.onInstalled.addListener(() => {
     // Disabled by default. Each tab opts in via setOptions on first open.
@@ -143,6 +187,15 @@ export default defineBackground(() => {
     } catch {
       // Tab may not have content script
     }
+  });
+
+  // The backend can redirect thread links to its internal bind address.
+  // Keep the resolved thread path but replace that internal origin before load.
+  chrome.webNavigation.onBeforeNavigate.addListener(({ tabId, url, frameId }) => {
+    if (frameId !== 0) return;
+    const correctedUrl = correctInternalThreadUrl(url);
+    if (!correctedUrl) return;
+    chrome.tabs.update(tabId, { url: correctedUrl }).catch(() => {});
   });
 
   // ─── Navigation committed ───────────────────────────────────────────────────

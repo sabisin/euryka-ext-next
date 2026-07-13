@@ -18,6 +18,7 @@ export default defineConfig({
       "tabs",
       "sidePanel",
       "webNavigation",
+      "declarativeNetRequestWithHostAccess",
       "contextMenus",
     ],
     // <all_urls> is required: the content script runs on every site (floating
