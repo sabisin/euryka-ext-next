@@ -1,4 +1,16 @@
-import { ArrowLeft, Check, ExternalLink, Eye, ImageIcon, Link, Pencil, Play, Save, Trash2, Type } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ExternalLink,
+  Eye,
+  ImageIcon,
+  Link,
+  Pencil,
+  Play,
+  Save,
+  Trash2,
+  Type,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { formatDistanceToNow, isValid } from "date-fns";
@@ -53,10 +65,8 @@ export function CollectionItemView({ itemId, onBack }: Props) {
     const nextNote = draft.trim();
     await setItems((current) =>
       (current ?? []).map((currentItem) =>
-        currentItem.id === item.id
-          ? { ...currentItem, note: nextNote || undefined }
-          : currentItem,
-      ),
+        currentItem.id === item.id ? { ...currentItem, note: nextNote || undefined } : currentItem
+      )
     );
     setSaved(true);
     setIsPreview(true);
@@ -64,7 +74,9 @@ export function CollectionItemView({ itemId, onBack }: Props) {
 
   const remove = async () => {
     if (!item) return;
-    await setItems((current) => (current ?? []).filter((currentItem) => currentItem.id !== item.id));
+    await setItems((current) =>
+      (current ?? []).filter((currentItem) => currentItem.id !== item.id)
+    );
     onBack();
   };
 
@@ -158,9 +170,7 @@ export function CollectionItemView({ itemId, onBack }: Props) {
                     {withHardLineBreaks(draft)}
                   </ReactMarkdown>
                 ) : (
-                  <p className="text-sm italic text-muted-foreground/50">
-                    No comments yet.
-                  </p>
+                  <p className="text-sm italic text-muted-foreground/50">No comments yet.</p>
                 )}
               </button>
             ) : (
@@ -214,8 +224,10 @@ function ItemPreview({ item }: { item: CollectionItem }) {
   if (item.type === "text") {
     return (
       <div className="flex flex-col gap-3">
-        <div className="rounded-md border border-border/70 bg-card/25 px-3 py-3 text-sm leading-relaxed text-foreground/85">
-          {item.content}
+        <div className="prose prose-sm max-w-none rounded-md border border-border/70 bg-card/25 px-3 py-3 text-foreground/85">
+          <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+            {withHardLineBreaks(item.content)}
+          </ReactMarkdown>
         </div>
         <SourceLink item={item} />
       </div>

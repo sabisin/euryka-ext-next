@@ -1,5 +1,7 @@
 import { Eye, EyeOff, MapPin, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import {
   firestoreTimestampToMs,
@@ -37,10 +39,7 @@ function filterBySearch(annotations: Annotation[], term: string): Annotation[] {
   if (!term.trim()) return annotations;
   const words = term.toLowerCase().split(/\s+/).filter(Boolean);
   return annotations.filter((annotation) => {
-    const haystack = [
-      annotation.note ?? "",
-      annotation.selectedText ?? "",
-    ].join(" ").toLowerCase();
+    const haystack = [annotation.note ?? "", annotation.selectedText ?? ""].join(" ").toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
 }
@@ -91,10 +90,10 @@ export function AnnotationsList({ onSelectMarker }: Props) {
           targetUrl: tab === "current" ? pageUrl : undefined,
           limit: PAGE_SIZE,
           cursor,
-        }),
+        })
       );
     },
-    [pageUrl, tab],
+    [pageUrl, tab]
   );
 
   useEffect(() => {
@@ -131,15 +130,13 @@ export function AnnotationsList({ onSelectMarker }: Props) {
           if (tab === "current" && pageUrl && next.targetUrl !== pageUrl) return current;
           return [next, ...current];
         }
-        return current.map((annotation) => annotation.id === next.id ? next : annotation);
+        return current.map((annotation) => (annotation.id === next.id ? next : annotation));
       });
     };
 
     const handleDelete = (event: Event) => {
       const deletedId = (event as CustomEvent<string>).detail;
-      setAnnotations((current) =>
-        current.filter((annotation) => annotation.id !== deletedId),
-      );
+      setAnnotations((current) => current.filter((annotation) => annotation.id !== deletedId));
     };
 
     window.addEventListener(ANNOTATION_UPDATED_EVENT, handleUpdate);
@@ -164,13 +161,10 @@ export function AnnotationsList({ onSelectMarker }: Props) {
 
   const filteredAnnotations = useMemo(
     () => filterBySearch(annotations, searchTerm),
-    [annotations, searchTerm],
+    [annotations, searchTerm]
   );
 
-  const annotationNumbers = useMemo(
-    () => buildAnnotationNumbers(annotations),
-    [annotations],
-  );
+  const annotationNumbers = useMemo(() => buildAnnotationNumbers(annotations), [annotations]);
 
   const allGroups = useMemo<AnnotationGroup[]>(() => {
     const byUrl = new Map<string, Annotation[]>();
@@ -183,7 +177,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
       .sort(
         (a, b) =>
           firestoreTimestampToMs(b.annotations[0].createdAt) -
-          firestoreTimestampToMs(a.annotations[0].createdAt),
+          firestoreTimestampToMs(a.annotations[0].createdAt)
       );
   }, [filteredAnnotations]);
 
@@ -217,7 +211,11 @@ export function AnnotationsList({ onSelectMarker }: Props) {
               variant={tab === key ? "secondary" : "ghost"}
               size="sm"
               onClick={() => selectTab(key)}
-              className={tab === key ? "bg-muted text-foreground" : "hover:bg-transparent hover:text-foreground/70"}
+              className={
+                tab === key
+                  ? "bg-muted text-foreground"
+                  : "hover:bg-transparent hover:text-foreground/70"
+              }
             >
               {label}
             </Button>
@@ -227,12 +225,18 @@ export function AnnotationsList({ onSelectMarker }: Props) {
         <Button
           variant="icon"
           size="icon-md"
-          title={hidden ? "Show annotations on page (Alt+Shift+A)" : "Hide annotations on page (Alt+Shift+A)"}
+          title={
+            hidden
+              ? "Show annotations on page (Alt+Shift+A)"
+              : "Hide annotations on page (Alt+Shift+A)"
+          }
           aria-label={hidden ? "Show annotations on page" : "Hide annotations on page"}
-          onClick={() => setPrefs((current) => {
-            const currentPrefs = current as UserPrefs | undefined;
-            return { ...currentPrefs!, annotationsHidden: !currentPrefs?.annotationsHidden };
-          })}
+          onClick={() =>
+            setPrefs((current) => {
+              const currentPrefs = current as UserPrefs | undefined;
+              return { ...currentPrefs!, annotationsHidden: !currentPrefs?.annotationsHidden };
+            })
+          }
           className={hidden ? "text-muted-foreground/40 hover:text-muted-foreground" : undefined}
         >
           {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -270,7 +274,11 @@ export function AnnotationsList({ onSelectMarker }: Props) {
         ) : !hasAny ? (
           <EmptyState
             message={tab === "current" ? "No annotations on this page" : "No annotations yet"}
-            hint={tab === "current" ? "Right-click anywhere on the page to add one." : "Right-click a page and choose Annotate with Euryka to place one."}
+            hint={
+              tab === "current"
+                ? "Right-click anywhere on the page to add one."
+                : "Right-click a page and choose Annotate with Euryka to place one."
+            }
           />
         ) : noSearchResults ? (
           <p className="py-8 text-center text-xs italic text-muted-foreground">
@@ -284,12 +292,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
               onSelectAnnotation={onSelectMarker}
               onDeleteAnnotation={deleteItem}
             />
-            {nextCursor && (
-              <LoadMoreButton
-                isLoading={isLoadingMore}
-                onClick={loadMore}
-              />
-            )}
+            {nextCursor && <LoadMoreButton isLoading={isLoadingMore} onClick={loadMore} />}
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -311,12 +314,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
                 />
               </div>
             ))}
-            {nextCursor && (
-              <LoadMoreButton
-                isLoading={isLoadingMore}
-                onClick={loadMore}
-              />
-            )}
+            {nextCursor && <LoadMoreButton isLoading={isLoadingMore} onClick={loadMore} />}
           </div>
         )}
       </div>
@@ -326,13 +324,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
 
 function LoadMoreButton({ isLoading, onClick }: { isLoading: boolean; onClick: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={onClick}
-      disabled={isLoading}
-      className="w-full"
-    >
+    <Button variant="ghost" size="sm" onClick={onClick} disabled={isLoading} className="w-full">
       {isLoading ? "Loading..." : "Load more"}
     </Button>
   );
@@ -360,10 +352,7 @@ function AnnotationsLoadingState() {
         >
           <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-full bg-muted" />
           <div className="min-w-0 flex-1 space-y-2">
-            <div
-              className="h-3 animate-pulse rounded bg-muted"
-              style={{ width: `${width}px` }}
-            />
+            <div className="h-3 animate-pulse rounded bg-muted" style={{ width: `${width}px` }} />
             <div className="h-3 w-2/3 animate-pulse rounded bg-muted/80" />
           </div>
         </div>
@@ -390,7 +379,9 @@ function AnnotationListItems({
         const metaParts = [
           annotation.selectedText ? `"${annotation.selectedText}"` : null,
           formatDate(annotation),
-        ].filter(Boolean).join(" - ");
+        ]
+          .filter(Boolean)
+          .join(" - ");
 
         return (
           <div
@@ -418,12 +409,31 @@ function AnnotationListItems({
             </span>
 
             <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
-              <p className={`truncate text-sm leading-tight ${annotation.note?.trim() ? "text-foreground/85" : "italic text-muted-foreground/50"}`}>
-                {annotation.note?.trim()
-                  ? annotation.note.split("\n")[0].replace(/[*_~`#]/g, "")
-                  : "No note - click to add one"}
-              </p>
-              <span className="min-w-0 truncate text-[11px] text-muted-foreground/45">{metaParts}</span>
+              <div
+                className={`truncate text-sm leading-tight ${annotation.note?.trim() ? "text-foreground/85" : "italic text-muted-foreground/50"}`}
+              >
+                {annotation.note?.trim() ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <span>{children}</span>,
+                      h1: ({ children }) => <span className="font-semibold">{children} </span>,
+                      h2: ({ children }) => <span className="font-semibold">{children} </span>,
+                      h3: ({ children }) => <span className="font-semibold">{children} </span>,
+                      ul: ({ children }) => <span>{children}</span>,
+                      ol: ({ children }) => <span>{children}</span>,
+                      li: ({ children }) => <span>{children} </span>,
+                    }}
+                  >
+                    {annotation.note}
+                  </ReactMarkdown>
+                ) : (
+                  "No note - click to add one"
+                )}
+              </div>
+              <span className="min-w-0 truncate text-[11px] text-muted-foreground/45">
+                {metaParts}
+              </span>
             </div>
 
             <Button

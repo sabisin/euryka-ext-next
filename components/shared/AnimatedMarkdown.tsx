@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Props {
   content: string;
@@ -17,7 +18,7 @@ export function AnimatedMarkdown({ content }: Props) {
       transition={{ duration: 0.5 }}
       className="prose prose-sm max-w-none text-foreground/80"
     >
-      <ReactMarkdown>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </motion.div>
   );
 }

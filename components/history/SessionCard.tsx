@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { format, isValid } from "date-fns";
 import { ImageIcon } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { firestoreTsToDate, hexToRgba } from "../../lib/utils";
 import { getSessionDisplay } from "../../lib/session-display";
 import { IconWrapper } from "../shared/IconWrapper";
@@ -28,7 +30,10 @@ export function SessionCard({ session, sparkCache, onClick }: Props) {
     >
       {/* Icon badge */}
       {isImageSession && imageUrl && !imgFailed ? (
-        <div className="flex-shrink-0 overflow-hidden rounded-lg bg-muted" style={{ width: 40, height: 40 }}>
+        <div
+          className="flex-shrink-0 overflow-hidden rounded-lg bg-muted"
+          style={{ width: 40, height: 40 }}
+        >
           <img
             src={imageUrl}
             alt=""
@@ -52,16 +57,29 @@ export function SessionCard({ session, sparkCache, onClick }: Props) {
       {/* Content */}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-baseline gap-2">
-          <span className="truncate text-xs font-semibold text-foreground">
-            {title}
-          </span>
+          <span className="truncate text-xs font-semibold text-foreground">{title}</span>
           {time && (
-            <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">{time}</span>
+            <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
+              {time}
+            </span>
           )}
         </div>
-        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-          {session.content}
-        </p>
+        <div className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <span>{children}</span>,
+              h1: ({ children }) => <span className="font-semibold">{children} </span>,
+              h2: ({ children }) => <span className="font-semibold">{children} </span>,
+              h3: ({ children }) => <span className="font-semibold">{children} </span>,
+              ul: ({ children }) => <span>{children}</span>,
+              ol: ({ children }) => <span>{children}</span>,
+              li: ({ children }) => <span>{children} </span>,
+            }}
+          >
+            {session.content}
+          </ReactMarkdown>
+        </div>
       </div>
     </button>
   );
