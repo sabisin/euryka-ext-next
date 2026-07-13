@@ -1,9 +1,6 @@
 import { supabase } from "./supabase";
-import type {
-  AuthState,
-  Collection,
-  CollectionItem,
-} from "./types";
+import { debugLog } from "./debug";
+import type { AuthState, Collection, CollectionItem } from "./types";
 
 type StorageItem<T> = {
   getValue: () => Promise<T>;
@@ -47,9 +44,11 @@ type CollectionShareRow = {
   collections?: CollectionRow | null;
 };
 
+const logCollections = debugLog("[Euryka collections]");
+
 export function createSupabaseCollectionsStorage(
   fallback: StorageItem<Collection[]>,
-  authStorage: StorageItem<AuthState>,
+  authStorage: StorageItem<AuthState>
 ): StorageItem<Collection[]> {
   const watchers = createWatchers<Collection[]>();
 
@@ -72,7 +71,10 @@ export function createSupabaseCollectionsStorage(
       const { data: ownSharesData, error: ownSharesError } = await supabase!
         .from("collection_shares")
         .select("collection_id,shared_with_email")
-        .in("collection_id", ((ownData ?? []) as CollectionRow[]).map((row) => row.id));
+        .in(
+          "collection_id",
+          ((ownData ?? []) as CollectionRow[]).map((row) => row.id)
+        );
 
       if (ownSharesError) {
         console.error("Failed to load collection shares from Supabase", ownSharesError);
@@ -100,7 +102,8 @@ export function createSupabaseCollectionsStorage(
         byId.set(row.id, collectionFromRow(row, sharesByCollectionId.get(row.id) ?? []));
       }
       for (const share of (sharedData ?? []) as unknown as CollectionShareRow[]) {
-        if (share.collections) byId.set(share.collections.id, collectionFromRow(share.collections, []));
+        if (share.collections)
+          byId.set(share.collections.id, collectionFromRow(share.collections, []));
       }
       const collections = Array.from(byId.values());
       watchers.emit(collections);
@@ -115,13 +118,11 @@ export function createSupabaseCollectionsStorage(
       }
 
       const sharedCollectionIds = new Set(await getSharedCollectionIds(user));
-      const ownCollections = value.filter(
-        (collection) => !sharedCollectionIds.has(collection.id),
-      );
+      const ownCollections = value.filter((collection) => !sharedCollectionIds.has(collection.id));
       const rows = ownCollections.map((collection) => collectionToRow(collection, user.id));
       const ids = rows.map((row) => row.id);
 
-      console.info("[Euryka collections] Saving collections", {
+      logCollections("Saving collections", {
         email: user.email,
         incomingCount: value.length,
         ownCount: ownCollections.length,
@@ -137,7 +138,7 @@ export function createSupabaseCollectionsStorage(
           console.error("[Euryka collections] Supabase collections upsert failed", error);
           throw error;
         }
-        console.info("[Euryka collections] Supabase collections upsert succeeded", {
+        logCollections("Supabase collections upsert succeeded", {
           ids,
         });
       }
@@ -146,7 +147,7 @@ export function createSupabaseCollectionsStorage(
         ownCollections.map((collection) => ({
           id: collection.id,
           sharedWith: collection.sharedWith ?? [],
-        })),
+        }))
       );
       watchers.emit(value);
     },
@@ -156,7 +157,7 @@ export function createSupabaseCollectionsStorage(
 
 export function createSupabaseCollectionItemsStorage(
   fallback: StorageItem<CollectionItem[]>,
-  authStorage: StorageItem<AuthState>,
+  authStorage: StorageItem<AuthState>
 ): StorageItem<CollectionItem[]> {
   const watchers = createWatchers<CollectionItem[]>();
 
@@ -164,19 +165,19 @@ export function createSupabaseCollectionItemsStorage(
     async getValue() {
       const user = await getCurrentUser(authStorage);
       if (!user) {
-        console.info("[Euryka collections] Collection items getValue: no Supabase user", {
+        logCollections("Collection items getValue: no Supabase user", {
           hasSupabase: Boolean(supabase),
         });
         return supabase ? [] : fallback.getValue();
       }
 
       const visibleCollectionIds = await getVisibleCollectionIds(user);
-      console.info("[Euryka collections] Loading collection items", {
+      logCollections("Loading collection items", {
         email: user.email,
         visibleCollectionIds,
       });
       if (visibleCollectionIds.length === 0) {
-        console.info("[Euryka collections] No visible collections; returning no items");
+        logCollections("No visible collections; returning no items");
         watchers.emit([]);
         return [];
       }
@@ -193,7 +194,7 @@ export function createSupabaseCollectionItemsStorage(
       }
 
       const items = ((data ?? []) as CollectionItemRow[]).map(collectionItemFromRow);
-      console.info("[Euryka collections] Loaded collection items from Supabase", {
+      logCollections("Loaded collection items from Supabase", {
         count: items.length,
         ids: items.map((item) => item.id),
       });
@@ -203,7 +204,7 @@ export function createSupabaseCollectionItemsStorage(
     async setValue(value) {
       const user = await getCurrentUser(authStorage);
       if (!user) {
-        console.info("[Euryka collections] Collection items setValue: no Supabase user", {
+        logCollections("Collection items setValue: no Supabase user", {
           incomingCount: value.length,
           hasSupabase: Boolean(supabase),
         });
@@ -214,13 +215,13 @@ export function createSupabaseCollectionItemsStorage(
 
       const ownCollectionIds = new Set(await getOwnCollectionIds(user));
       const filteredOut = value.filter(
-        (item) => !isUuid(item.collectionId) || !ownCollectionIds.has(item.collectionId),
+        (item) => !isUuid(item.collectionId) || !ownCollectionIds.has(item.collectionId)
       );
       const rows = value
         .filter((item) => isUuid(item.collectionId) && ownCollectionIds.has(item.collectionId))
         .map((item) => collectionItemToRow(item, user.id));
 
-      console.info("[Euryka collections] Saving collection items", {
+      logCollections("Saving collection items", {
         email: user.email,
         incomingCount: value.length,
         ownCollectionIds: Array.from(ownCollectionIds),
@@ -229,7 +230,9 @@ export function createSupabaseCollectionItemsStorage(
           id: item.id,
           collectionId: item.collectionId,
           title: item.title,
-          reason: !isUuid(item.collectionId) ? "collectionId is not uuid" : "collectionId is not owned",
+          reason: !isUuid(item.collectionId)
+            ? "collectionId is not uuid"
+            : "collectionId is not owned",
         })),
         rowIds: rows.map((row) => row.id),
       });
@@ -240,11 +243,11 @@ export function createSupabaseCollectionItemsStorage(
           console.error("[Euryka collections] Supabase collection_items upsert failed", error);
           throw error;
         }
-        console.info("[Euryka collections] Supabase collection_items upsert succeeded", {
+        logCollections("Supabase collection_items upsert succeeded", {
           rowIds: rows.map((row) => row.id),
         });
       } else {
-        console.info("[Euryka collections] No collection item rows to upsert");
+        logCollections("No collection item rows to upsert");
       }
       watchers.emit(value);
     },
@@ -277,10 +280,7 @@ async function getVisibleCollectionIds(user: UserRow): Promise<string[]> {
 }
 
 async function getOwnCollectionIds(user: UserRow): Promise<string[]> {
-  const { data, error } = await supabase!
-    .from("collections")
-    .select("id")
-    .eq("user_id", user.id);
+  const { data, error } = await supabase!.from("collections").select("id").eq("user_id", user.id);
 
   if (error) {
     console.error("Failed to load own collection ids from Supabase", error);
@@ -305,28 +305,21 @@ async function getSharedCollectionIds(user: UserRow): Promise<string[]> {
 }
 
 async function saveCollectionShares(
-  collections: { id: string; sharedWith: string[] }[],
+  collections: { id: string; sharedWith: string[] }[]
 ): Promise<void> {
   const collectionIds = collections.map((collection) => collection.id);
   if (collectionIds.length === 0) return;
 
   const rows = collections.flatMap((collection) =>
     Array.from(
-      new Set(
-        collection.sharedWith
-          .map((email) => email.trim().toLowerCase())
-          .filter(Boolean),
-      ),
+      new Set(collection.sharedWith.map((email) => email.trim().toLowerCase()).filter(Boolean))
     ).map((email) => ({
       collection_id: collection.id,
       shared_with_email: email,
-    })),
+    }))
   );
 
-  await supabase!
-    .from("collection_shares")
-    .delete()
-    .in("collection_id", collectionIds);
+  await supabase!.from("collection_shares").delete().in("collection_id", collectionIds);
 
   if (rows.length > 0) {
     const { error } = await supabase!.from("collection_shares").upsert(rows);
@@ -402,7 +395,7 @@ function isUuid(value: string): boolean {
 
 export async function saveSlackMemberId(
   authStorage: StorageItem<AuthState>,
-  slackMemberId: string,
+  slackMemberId: string
 ): Promise<void> {
   const user = await getCurrentUser(authStorage);
   if (!user) return;
@@ -421,7 +414,7 @@ export async function getSlackMemberIds(emails: string[]): Promise<Map<string, s
   return new Map(
     ((data ?? []) as { email: string; slack_member_id: string | null }[])
       .filter((row) => row.slack_member_id)
-      .map((row) => [row.email, row.slack_member_id!]),
+      .map((row) => [row.email, row.slack_member_id!])
   );
 }
 
