@@ -8,6 +8,7 @@ import type {
   Spark,
   SparkRecommendation,
 } from "../../lib/types";
+import type { PageContextMode } from "../../lib/page-context";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { Button } from "../shared/Button";
 import { IconWrapper } from "../shared/IconWrapper";
@@ -29,6 +30,7 @@ interface Props {
   mode: ChatMode;
   sparkRecommendationResult: SparkRecommendationResult | null;
   includePageContent: boolean;
+  pageContextMode: PageContextMode;
   includeSelectedText: boolean;
   pageContentCharCount: number | null;
   selectedTextCharCount: number | null;
@@ -44,6 +46,7 @@ interface Props {
   onModeChange: (mode: ChatMode) => void;
   onRunRecommendedSpark: (spark: Spark) => void;
   onIncludePageContentChange: (checked: boolean) => void;
+  onPageContextModeChange: (mode: PageContextMode) => void;
   onIncludeSelectedTextChange: (checked: boolean) => void;
 }
 
@@ -57,6 +60,7 @@ export function ChatResult({
   mode,
   sparkRecommendationResult,
   includePageContent,
+  pageContextMode,
   includeSelectedText,
   pageContentCharCount,
   selectedTextCharCount,
@@ -72,6 +76,7 @@ export function ChatResult({
   onModeChange,
   onRunRecommendedSpark,
   onIncludePageContentChange,
+  onPageContextModeChange,
   onIncludeSelectedTextChange,
 }: Props) {
   const [copied, setCopied] = useState(false);
@@ -202,6 +207,7 @@ export function ChatResult({
           isStreaming={isStreaming}
           mode={mode}
           includePageContent={includePageContent}
+          pageContextMode={pageContextMode}
           includeSelectedText={includeSelectedText}
           pageContentCharCount={pageContentCharCount}
           selectedTextCharCount={selectedTextCharCount}
@@ -214,6 +220,7 @@ export function ChatResult({
           onOpenSettings={onOpenSettings}
           onModeChange={onModeChange}
           onIncludePageContentChange={onIncludePageContentChange}
+          onPageContextModeChange={onPageContextModeChange}
           onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
       </div>

@@ -151,6 +151,7 @@ export function PromptInputToolButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}

@@ -60,7 +60,7 @@ export interface SparkRecommendation {
   confidence?: number;
 }
 
-export type LinkedInProspectEntityType = "person" | "company" | "unsupported";
+export type LinkedInProspectEntityType = "person" | "company" | "discovery" | "unsupported";
 
 export interface LinkedInProspectorStatus {
   isLinkedIn: boolean;
@@ -71,7 +71,7 @@ export interface LinkedInProspectorStatus {
 }
 
 export interface LinkedInRelatedPage {
-  entityType: Exclude<LinkedInProspectEntityType, "unsupported">;
+  entityType: Extract<LinkedInProspectEntityType, "person" | "company">;
   name: string;
   url: string;
 }

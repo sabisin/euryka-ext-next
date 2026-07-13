@@ -20,6 +20,12 @@ import {
 } from "../../lib/storage";
 import { decodeJwt, getValidToken, runWithTokenRetry } from "../../lib/auth";
 import type { LanguageModelSession } from "../../lib/chrome-ai";
+import {
+  compactPageContent,
+  compactPageContentV2,
+  type PageContentBlock,
+  type PageContextMode,
+} from "../../lib/page-context";
 import { DEBUG, debugLog } from "../../lib/debug";
 import { analyseImage as apiAnalyseImage, fetchSparks } from "../../lib/api";
 import { openChatThread, streamChatResponse } from "../../lib/chat-api";
@@ -38,6 +44,7 @@ import { AppSidebar, NavRail } from "../../components/layout/AppSidebar";
 import { AnnotationsList } from "../../components/annotations/AnnotationsList";
 import { AnnotationHeaderTitle, AnnotationView } from "../../components/annotations/AnnotationView";
 import { SparksGallery } from "../../components/sparks/SparksGallery";
+import { ContextSelector } from "../../components/sparks/ContextSelector";
 import { SparksResult } from "../../components/sparks/SparksResult";
 import { ChatResult } from "../../components/sparks/ChatResult";
 import { ProspectorResult } from "../../components/sparks/ProspectorResult";
@@ -80,6 +87,7 @@ let collectionSaveQueue = Promise.resolve();
 
 const logCollectionSave = debugLog("[Euryka collections]");
 const logSparkRecommendation = debugLog("[Euryka spark recommendation]");
+const logWorkspace = debugLog("[Euryka workspace]");
 
 // The panel page receives its tabId via the URL query string, set by the
 // background when calling sidePanel.setOptions({ path: "sidepanel.html?tabId=N" }).
@@ -110,6 +118,7 @@ const CHROME_SPARK_RECOMMENDATION_RETRY_HISTORY_CHAR_LIMIT = 5_000;
 interface ChatPromptContext {
   pageUrl: string;
   pageContent: string;
+  pageBlocks: PageContentBlock[];
   selectedText: string;
 }
 
@@ -204,8 +213,9 @@ function SidePanel() {
   const chatApiKeyPromptAvailable = ENABLE_EURYKA_CHAT_PROVIDER && hasChatApiKey;
   const chatAbortRef = useRef<AbortController | null>(null);
   const chatRunIdRef = useRef(0);
-  const [includeChatPageContent, setIncludeChatPageContent] = useState(false);
+  const [includeChatPageContent, setIncludeChatPageContent] = useState(true);
   const [includeChatSelectedText, setIncludeChatSelectedText] = useState(false);
+  const [pageContextMode, setPageContextMode] = useState<PageContextMode>("compact");
   const [chatMode, setChatMode] = useState<ChatMode>("chat");
   const [sparkRecommendationResult, setSparkRecommendationResult] =
     useState<SparkRecommendationResult | null>(null);
@@ -356,7 +366,7 @@ function SidePanel() {
       setWorkspace(workspaceId);
     }
     if (!workspaceId) {
-      console.warn("[Euryka workspace] cannot run spark without workspace", {
+      logWorkspace("cannot run spark without workspace", {
         sparkId: spark.id,
         selectedWorkspaceId,
         workspaceCount: workspaces.length,
@@ -540,10 +550,16 @@ function SidePanel() {
       return;
     }
 
+    const pageWillBeCompacted =
+      pageContextMode !== "trim" && limitState.exceedsPageContentLimit;
     setChatUserNotice(
-      trimmed
-        ? "Number of chars exceeds model context. Content was trimmed."
-        : "Number of chars exceeds model context. Content will be trimmed."
+      pageWillBeCompacted && !limitState.exceedsSelectedTextLimit
+        ? trimmed
+          ? "Page context was compacted to fit the local model."
+          : "Page context will be compacted to fit the local model."
+        : trimmed
+          ? "Number of chars exceeds model context. Content was trimmed."
+          : "Number of chars exceeds model context. Content will be trimmed."
     );
     setChatUserNoticeTitle(null);
   };
@@ -554,7 +570,7 @@ function SidePanel() {
 
     if (!needsPageContent && !needsSelectedText) {
       setChatContextCounts({ pageContent: null, selectedText: null });
-      return { pageUrl: currentTabUrl ?? "", pageContent: "", selectedText: "" };
+      return { pageUrl: currentTabUrl ?? "", pageContent: "", pageBlocks: [], selectedText: "" };
     }
 
     if (THIS_TAB_ID === null) {
@@ -576,6 +592,7 @@ function SidePanel() {
     const context: ChatPromptContext = {
       pageUrl: tabUrl.url.trim(),
       pageContent: page?.text.trim() ?? "",
+      pageBlocks: page?.blocks ?? [],
       selectedText: selection?.text.trim() ?? "",
     };
 
@@ -797,6 +814,7 @@ function SidePanel() {
         assistantMessageId: assistantMessage.id,
         context,
         history: modelHistory,
+        query: message,
         runId,
         suppressAssistantText: isSparkRecommendation,
       });
@@ -853,12 +871,14 @@ function SidePanel() {
     assistantMessageId,
     context,
     history,
+    query,
     runId,
     suppressAssistantText = false,
   }: {
     assistantMessageId: string;
     context: ChatPromptContext;
     history: ChatUiMessage[];
+    query: string;
     runId: number;
     suppressAssistantText?: boolean;
   }): Promise<{ used: boolean; content: string }> => {
@@ -889,7 +909,9 @@ function SidePanel() {
       const initialPrompt = buildChromeChatPrompt(
         history,
         context,
-        suppressAssistantText ? SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS : undefined
+        suppressAssistantText ? SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS : undefined,
+        pageContextMode,
+        query
       );
       if (suppressAssistantText) {
         logSparkRecommendation("using Chrome provider", {
@@ -926,7 +948,9 @@ function SidePanel() {
                 pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
                 selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
                 historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
-              }
+              },
+          pageContextMode,
+          query
         );
         setChatUserNotice(
           retryPrompt.userNotice ?? "Number of chars exceeds model context. Content was trimmed."
@@ -1344,6 +1368,21 @@ function SidePanel() {
               </Button>
             ) : undefined
           }
+          rightSlot={
+            currentPage === "sparks" &&
+            !selectedImageUrl &&
+            !isSparkResultView &&
+            !isChatResultView ? (
+              <ContextSelector
+                brands={brands}
+                projects={projects}
+                selectedBrandId={selectedBrandId}
+                selectedProjectId={selectedProjectId}
+                onSelectBrand={setBrand}
+                onSelectProject={setProject}
+              />
+            ) : undefined
+          }
           centerTitle={isSparkResultView || isChatResultView}
         />
 
@@ -1372,6 +1411,7 @@ function SidePanel() {
                 mode={chatMode}
                 sparkRecommendationResult={sparkRecommendationResult}
                 includePageContent={includeChatPageContent}
+                pageContextMode={pageContextMode}
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
                 selectedTextCharCount={chatContextCounts.selectedText}
@@ -1391,6 +1431,7 @@ function SidePanel() {
                 onModeChange={setChatMode}
                 onRunRecommendedSpark={handleUseSpark}
                 onIncludePageContentChange={handleIncludeChatPageContentChange}
+                onPageContextModeChange={setPageContextMode}
                 onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
               />
             ) : showSparkResult && prospectorResult ? (
@@ -1428,15 +1469,12 @@ function SidePanel() {
               </div>
             ) : (
               <SparksGallery
-                selectedBrandId={selectedBrandId}
-                selectedProjectId={selectedProjectId}
-                brands={brands}
-                projects={projects}
                 lastFive={prefs?.lastFive ?? []}
                 currentUrl={currentTabUrl}
                 chatApiKeyAvailable={!ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable}
                 chatMode={chatMode}
                 includePageContent={includeChatPageContent}
+                pageContextMode={pageContextMode}
                 includeSelectedText={includeChatSelectedText}
                 pageContentCharCount={chatContextCounts.pageContent}
                 selectedTextCharCount={chatContextCounts.selectedText}
@@ -1462,9 +1500,8 @@ function SidePanel() {
                 onOpenChatSettings={openChatSettings}
                 onChatModeChange={setChatMode}
                 onIncludePageContentChange={handleIncludeChatPageContentChange}
+                onPageContextModeChange={setPageContextMode}
                 onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
-                onSelectBrand={setBrand}
-                onSelectProject={setProject}
               />
             )
           ) : currentPage === "history" ? (
@@ -1825,14 +1862,38 @@ const SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS: ChromePromptLimits = {
 function buildChromeChatPrompt(
   messages: ChatUiMessage[],
   context: ChatPromptContext,
-  limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS
+  limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS,
+  pageContextMode: PageContextMode = "trim",
+  query = messages.filter((message) => message.role === "user").at(-1)?.content ?? ""
 ): ChromePromptResult {
   const parts = [];
-  const clippedPageContent = clipStart(context.pageContent, limits.pageContentLimit);
+  const compactedPageContent = (() => {
+    if (pageContextMode === "compact-v2") {
+      return compactPageContentV2(
+        context.pageBlocks,
+        context.pageContent,
+        query,
+        limits.pageContentLimit
+      );
+    }
+    if (pageContextMode === "compact") {
+      return compactPageContent(
+        context.pageBlocks,
+        context.pageContent,
+        query,
+        limits.pageContentLimit
+      );
+    }
+    return null;
+  })();
+  const clippedPageContent = compactedPageContent
+    ? { text: compactedPageContent.text, truncated: compactedPageContent.compacted }
+    : clipStart(context.pageContent, limits.pageContentLimit);
   const clippedSelectedText = clipStart(context.selectedText, limits.selectedTextLimit);
   const contextText = buildContextText({
     pageUrl: context.pageUrl,
     pageContent: clippedPageContent.text,
+    pageBlocks: [],
     selectedText: clippedSelectedText.text,
   });
   if (contextText) parts.push(contextText);
@@ -1845,7 +1906,9 @@ function buildChromeChatPrompt(
 
   const trimmedDetails = [
     clippedPageContent.truncated
-      ? `page content after trimming: ${clippedPageContent.text.length} chars`
+      ? compactedPageContent
+        ? `page context after compaction: ${clippedPageContent.text.length} of ${compactedPageContent.originalCharCount} chars (${compactedPageContent.selectedChunkCount}/${compactedPageContent.totalChunkCount} sections)`
+        : `page content after trimming: ${clippedPageContent.text.length} chars`
       : null,
     clippedSelectedText.truncated
       ? `highlighted text after trimming: ${clippedSelectedText.text.length} chars`
@@ -1863,7 +1926,9 @@ function buildChromeChatPrompt(
   return {
     prompt: parts.join("\n\n---\n\n"),
     userNotice: trimmedItems.length
-      ? "Number of chars exceeds model context. Content was trimmed."
+      ? compactedPageContent?.compacted && !clippedSelectedText.truncated && !clippedHistory.truncated
+        ? "Page context was compacted to relevant sections."
+        : "Number of chars exceeds model context. Content was reduced."
       : null,
     userNoticeTitle: trimmedDetails.length ? trimmedDetails.join(", ") : null,
   };

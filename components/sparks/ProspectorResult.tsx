@@ -260,7 +260,10 @@ export function ProspectorResult({
 
 function normalizeProfiles(prospect: LinkedInProspectData): SubmitProfile[] {
   const profiles = new Map<string, SubmitProfile>();
-  if (prospect.entityType !== "unsupported" && prospect.pageUrl) {
+  if (
+    (prospect.entityType === "person" || prospect.entityType === "company") &&
+    prospect.pageUrl
+  ) {
     const url = normalizeLinkedInUrl(prospect.pageUrl) ?? prospect.pageUrl;
     profiles.set(url, {
       entityType: prospect.entityType,
@@ -334,6 +337,7 @@ function normalizeLinkedInUrl(value: string) {
 function toEntityLabel(entityType: string) {
   if (entityType === "person") return "Person";
   if (entityType === "company") return "Company";
+  if (entityType === "discovery") return "Discovery page";
   return "Unsupported";
 }
 

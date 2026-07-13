@@ -8,9 +8,10 @@ import type {
   AnnotationUpdateResponse,
 } from "./annotations-api";
 import type { CollectionItemType, UserPrefs } from "./types";
+import type { PageContentBlock } from "./page-context";
 
 interface ProtocolMap {
-  extractText(): { text: string };
+  extractText(): { text: string; blocks: PageContentBlock[] };
   getSelectedText(): { text: string };
   getLinkedInProspectStatus(): import("./types").LinkedInProspectorStatus;
   getLinkedInProspectData(): import("./types").LinkedInProspectData;

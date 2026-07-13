@@ -37,9 +37,9 @@ export function ContextSelector({
   const term = search.trim().toLowerCase();
 
   const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b])), [brands]);
-  const selectedBrand = selectedBrandId ? brandById.get(selectedBrandId) ?? null : null;
+  const selectedBrand = selectedBrandId ? (brandById.get(selectedBrandId) ?? null) : null;
   const selectedProject = selectedProjectId
-    ? projects.find((p) => p.id === selectedProjectId) ?? null
+    ? (projects.find((p) => p.id === selectedProjectId) ?? null)
     : null;
 
   const brandGroups = useMemo(() => {
@@ -73,13 +73,24 @@ export function ContextSelector({
   const hasResults = brandGroups.length > 0 || otherProjects.length > 0;
 
   // Early return AFTER all hooks — safe to conditionally render here.
-  if (brands.length === 0 && projects.length === 0) return null;
+  if (brands.length === 0 && projects.length === 0) {
+    return (
+      <a
+        href="https://app.euryka.ai/ws/brandhub"
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs text-foreground transition-colors hover:border-border/70 hover:bg-accent"
+      >
+        Create Brand or Projects
+      </a>
+    );
+  }
 
   // Display label: "Brand / Project" when both, single when only one
   const label =
     selectedBrand && selectedProject
       ? `${selectedBrand.name} / ${selectedProject.name}`
-      : selectedBrand?.name ?? selectedProject?.name ?? "All content";
+      : (selectedBrand?.name ?? selectedProject?.name ?? "Select Brand or Project");
   const hasSelection = !!(selectedBrand || selectedProject);
 
   const clear = () => {
@@ -143,7 +154,7 @@ export function ContextSelector({
       {open && (
         <>
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[60] mt-1 w-72 overflow-hidden rounded-md border border-border bg-card shadow-xl">
+          <div className="absolute right-0 top-full z-[60] mt-1 w-[min(18rem,calc(100vw-4rem))] overflow-hidden rounded-md border border-border bg-card shadow-xl">
             {/* Search */}
             <div className="border-b border-border p-2">
               <div className="relative">
@@ -170,8 +181,7 @@ export function ContextSelector({
               ) : (
                 <>
                   {brandGroups.map(({ brand, projects: brandProjects }) => {
-                    const brandSelected =
-                      selectedBrandId === brand.id && !selectedProjectId;
+                    const brandSelected = selectedBrandId === brand.id && !selectedProjectId;
                     return (
                       <div key={brand.id} className="py-1">
                         {/* Brand row */}
@@ -192,8 +202,7 @@ export function ContextSelector({
                         {/* Nested projects */}
                         {brandProjects.map((project) => {
                           const projectSelected =
-                            selectedBrandId === brand.id &&
-                            selectedProjectId === project.id;
+                            selectedBrandId === brand.id && selectedProjectId === project.id;
                           return (
                             <button
                               key={`${brand.id}-${project.id}`}

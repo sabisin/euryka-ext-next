@@ -12,6 +12,7 @@ interface Props {
   currentPage: PageKey;
   leftSlot?: React.ReactNode;
   titleSlot?: React.ReactNode;
+  rightSlot?: React.ReactNode;
   centerTitle?: boolean;
 }
 
@@ -19,6 +20,7 @@ export function Header({
   currentPage,
   leftSlot,
   titleSlot,
+  rightSlot,
   centerTitle = false,
 }: Props) {
   if (titleSlot) {
@@ -37,19 +39,13 @@ export function Header({
       <div className="flex min-w-0 items-center gap-3">
         {leftSlot}
         {!centerTitle && (
-          <span className="truncate text-sm font-semibold">
-            {PAGE_LABELS[currentPage]}
-          </span>
+          <span className="truncate text-sm font-semibold">{PAGE_LABELS[currentPage]}</span>
         )}
       </div>
 
-      {centerTitle && (
-        <span className="text-sm font-semibold">
-          {PAGE_LABELS[currentPage]}
-        </span>
-      )}
+      {centerTitle && <span className="text-sm font-semibold">{PAGE_LABELS[currentPage]}</span>}
 
-      <div />
+      <div className="col-start-3 flex min-w-0 items-center justify-end">{rightSlot}</div>
     </header>
   );
 }
