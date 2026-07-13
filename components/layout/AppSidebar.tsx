@@ -1,6 +1,6 @@
 /// <reference path="../../.wxt/wxt.d.ts" />
 
-import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Check,
   ChevronDown,
@@ -8,16 +8,15 @@ import {
   // Folder,
   History,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
-  X,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
 import type { PageKey } from "../../lib/types";
 import type { Workspace } from "../../lib/types";
-import { useTheme } from "../../hooks/use-theme";
 import { Button } from "../shared/Button";
-import darkLogo from "../../assets/ek-alt-blue.svg";
-import lightLogo from "../../assets/ek-icon-black.svg";
 
 interface SidebarProps {
   currentPage: PageKey;
@@ -59,27 +58,19 @@ const NAV_ITEMS: { key: PageKey; label: string; icon: React.ReactNode }[] = [
 
 // Permanent narrow icon rail — always visible on the left edge.
 export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps) {
-  const theme = useTheme();
-  const logo = theme === "light" ? lightLogo : darkLogo;
-
   return (
     <div className="flex w-11 flex-shrink-0 flex-col items-center border-r border-border bg-card">
-      {/* Logo mark — fixed height matches the header */}
+      {/* Sidebar control — fixed height matches the header */}
       <div className="flex h-16 shrink-0 items-center justify-center border-b border-border">
-        <button
-          type="button"
+        <Button
+          variant="icon"
+          size="icon-lg"
           title="Open sidebar"
           aria-label="Open sidebar"
           onClick={onOpenSidebar}
-          className="flex h-7 w-7 cursor-pointer items-center justify-center transition-opacity hover:opacity-80"
         >
-          <img
-            src={logo}
-            alt="Euryka"
-            className="h-[22px] w-[22px]"
-            draggable={false}
-          />
-        </button>
+          <PanelLeftOpen size={16} />
+        </Button>
       </div>
 
       {/* Main nav */}
@@ -124,10 +115,10 @@ export function AppSidebar({
   onClose,
   docked = false,
 }: SidebarProps) {
-  const theme = useTheme();
-  const logo = theme === "light" ? lightLogo : darkLogo;
-
-  if (!isOpen) return null;
+  const shouldReduceMotion = useReducedMotion();
+  const panelTransition = shouldReduceMotion
+    ? { duration: 0 }
+    : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] as const };
 
   const allNavItems = [
     ...NAV_ITEMS,
@@ -139,103 +130,111 @@ export function AppSidebar({
   ];
 
   return (
-    <>
-      {!docked && (
-        <button
-          type="button"
-          aria-label="Close sidebar"
-          className="fixed inset-0 z-40 border-0 bg-black/50 p-0"
-          onClick={onClose}
-        />
-      )}
-
-      <aside
-        className={`z-50 flex w-56 shrink-0 flex-col border-r border-border bg-card ${
-          docked ? "relative h-screen" : "fixed inset-y-0 left-0"
-        }`}
-      >
-        {/* Header */}
-        <div className="flex h-16 items-center justify-between border-b border-border px-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <img
-                src={logo}
-                alt=""
-                className="h-[22px] w-[22px]"
-                draggable={false}
-              />
-            </div>
-            <span className="text-sm font-semibold text-foreground">
-              Euryka
-            </span>
-          </div>
+    <AnimatePresence initial={false}>
+      {isOpen && (
+        <>
           {!docked && (
-            <Button
-              variant="icon"
-              size="icon-md"
+            <motion.button
+              type="button"
+              aria-label="Close sidebar"
+              className="fixed inset-0 z-40 border-0 bg-black/50 p-0"
               onClick={onClose}
-            >
-              <X size={14} />
-            </Button>
-          )}
-        </div>
-
-        {/* Workspace selector */}
-        {workspaces.length > 0 && (
-          <div className="border-b border-border px-3 py-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Workspace
-            </p>
-            <WorkspaceDropdown
-              workspaces={workspaces}
-              selectedId={selectedWorkspaceId}
-              onSelect={onSelectWorkspace}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={panelTransition}
             />
-          </div>
-        )}
+          )}
 
-        {/* Nav with labels */}
-        <nav className="flex-1 space-y-0.5 px-2 py-2">
-          {allNavItems.map(({ key, label, icon }) => (
-            <Button
-              key={key}
-              variant={currentPage === key ? "secondary" : "ghost"}
-              size="md"
-              onClick={() => {
-                onNavigate(key);
-                if (!docked) onClose();
-              }}
-              className="w-full justify-start"
+          <motion.aside
+            className={`z-50 flex w-56 shrink-0 flex-col overflow-hidden border-r border-border bg-card ${
+              docked ? "relative h-screen" : "fixed inset-y-0 left-0"
+            }`}
+            initial={docked || shouldReduceMotion ? false : { width: 44 }}
+            animate={{ width: 224 }}
+            exit={{ width: 44 }}
+            transition={panelTransition}
+          >
+            {!docked && (
+              <div className="flex h-16 w-56 shrink-0 items-center justify-end border-b border-border px-3">
+                <Button
+                  variant="icon"
+                  size="icon-md"
+                  title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
+                  onClick={onClose}
+                >
+                  <PanelLeftClose size={14} />
+                </Button>
+              </div>
+            )}
+
+            <motion.div
+              className="flex min-h-0 w-56 flex-1 flex-col"
+              initial={docked || shouldReduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.12, delay: 0.04 }}
             >
-              {icon}
-              {label}
-            </Button>
-          ))}
-        </nav>
+              {/* Workspace selector */}
+              {workspaces.length > 0 && (
+                <div className="border-b border-border px-3 py-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Workspace
+                  </p>
+                  <WorkspaceDropdown
+                    workspaces={workspaces}
+                    selectedId={selectedWorkspaceId}
+                    onSelect={onSelectWorkspace}
+                  />
+                </div>
+              )}
 
-        {/* Footer links */}
-        <div className="space-y-0.5 border-t border-border px-2 pb-3 pt-2">
-          <Button
-            variant="ghost"
-            size="md"
-            onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
-            className="w-full justify-start"
-          >
-            <ExternalLink size={14} />
-            Billing
-          </Button>
-          <Button
-            variant="ghost"
-            size="md"
-            onClick={() => chrome.tabs.create({ url: `${BASE_URL}/help` })}
-            className="w-full justify-start"
-          >
-            <ExternalLink size={14} />
-            Help
-          </Button>
-        </div>
-      </aside>
-    </>
+              {/* Nav with labels */}
+              <nav className="flex-1 space-y-0.5 px-2 py-2">
+                {allNavItems.map(({ key, label, icon }) => (
+                  <Button
+                    key={key}
+                    variant={currentPage === key ? "secondary" : "ghost"}
+                    size="md"
+                    onClick={() => {
+                      onNavigate(key);
+                      if (!docked) onClose();
+                    }}
+                    className="w-full justify-start"
+                  >
+                    {icon}
+                    {label}
+                  </Button>
+                ))}
+              </nav>
+
+              {/* Footer links */}
+              <div className="space-y-0.5 border-t border-border px-2 pb-3 pt-2">
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
+                  className="w-full justify-start"
+                >
+                  <ExternalLink size={14} />
+                  Billing
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => chrome.tabs.create({ url: "https://euryka.ai/help/" })}
+                  className="w-full justify-start"
+                >
+                  <ExternalLink size={14} />
+                  Help
+                </Button>
+              </div>
+            </motion.div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -290,13 +289,13 @@ function WorkspaceDropdown({
                     onSelect(ws.id);
                     setOpen(false);
                   }}
-                  className={`w-full justify-between text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
+                  className={`w-full justify-start text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
                 >
-                  <span className="truncate">{ws.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-left">{ws.name}</span>
                   {isSelected && (
                     <Check
                       size={12}
-                      className="shrink-0 text-muted-foreground"
+                      className="ml-auto shrink-0 text-muted-foreground"
                     />
                   )}
                 </Button>
