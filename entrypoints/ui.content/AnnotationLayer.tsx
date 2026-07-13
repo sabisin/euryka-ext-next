@@ -1,9 +1,6 @@
 import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import {
-  firestoreTimestampToMs,
-  type Annotation,
-} from "../../lib/annotations-api";
+import { firestoreTimestampToMs, type Annotation } from "../../lib/annotations-api";
 import { onMessage, sendMessage } from "../../lib/messaging";
 import { debugLog } from "../../lib/debug";
 import type { UserPrefs } from "../../lib/types";
@@ -69,10 +66,34 @@ function rectToDebug(rect: DOMRect) {
 }
 
 const BLOCK_TAGS = new Set([
-  "BODY", "DIV", "SECTION", "ARTICLE", "MAIN", "HEADER", "FOOTER",
-  "ASIDE", "NAV", "FIGURE", "IMG", "TABLE", "FORM", "LI",
-  "BLOCKQUOTE", "DETAILS", "UL", "OL",
-  "P", "TD", "TH", "CAPTION", "H1", "H2", "H3", "H4", "H5", "H6",
+  "BODY",
+  "DIV",
+  "SECTION",
+  "ARTICLE",
+  "MAIN",
+  "HEADER",
+  "FOOTER",
+  "ASIDE",
+  "NAV",
+  "FIGURE",
+  "IMG",
+  "TABLE",
+  "FORM",
+  "LI",
+  "BLOCKQUOTE",
+  "DETAILS",
+  "UL",
+  "OL",
+  "P",
+  "TD",
+  "TH",
+  "CAPTION",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
 ]);
 
 function findBlockAncestor(el: Element): Element {
@@ -102,7 +123,13 @@ function getXPath(el: Element): string {
 
 function findByXPath(xpath: string): Element | null {
   try {
-    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const result = document.evaluate(
+      xpath,
+      document,
+      null,
+      XPathResult.FIRST_ORDERED_NODE_TYPE,
+      null
+    );
     return result.singleNodeValue as Element | null;
   } catch {
     return null;
@@ -113,9 +140,11 @@ function extractSelectedText(clientX: number, clientY: number): string | undefin
   const selected = window.getSelection()?.toString().replace(/\s+/g, " ").trim();
   if (selected) return selected;
 
-  const range = (document as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  }).caretRangeFromPoint?.(clientX, clientY);
+  const range = (
+    document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    }
+  ).caretRangeFromPoint?.(clientX, clientY);
   if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return undefined;
 
   const fullText = (range.startContainer as Text).data;
@@ -129,21 +158,22 @@ function extractSelectedText(clientX: number, clientY: number): string | undefin
   return snippet || undefined;
 }
 
-function captureTextAnchor(clientX: number, clientY: number):
-  | { textParentXPath: string; textNodeIndex: number; textOffset: number }
-  | null {
-  const range = (document as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  }).caretRangeFromPoint?.(clientX, clientY);
+function captureTextAnchor(
+  clientX: number,
+  clientY: number
+): { textParentXPath: string; textNodeIndex: number; textOffset: number } | null {
+  const range = (
+    document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    }
+  ).caretRangeFromPoint?.(clientX, clientY);
   if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
 
   const textNode = range.startContainer as Text;
   const parent = textNode.parentElement;
   if (!parent) return null;
 
-  const textNodes = Array.from(parent.childNodes).filter(
-    (n) => n.nodeType === Node.TEXT_NODE,
-  );
+  const textNodes = Array.from(parent.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE);
   const textNodeIndex = textNodes.indexOf(textNode);
   if (textNodeIndex < 0) return null;
 
@@ -154,13 +184,24 @@ function captureTextAnchor(clientX: number, clientY: number):
   };
 }
 
-function computeAnchor(clientX: number, clientY: number, pageX: number, pageY: number): Omit<ContextPoint, "x" | "y"> {
+function computeAnchor(
+  clientX: number,
+  clientY: number,
+  pageX: number,
+  pageY: number
+): Omit<ContextPoint, "x" | "y"> {
   const target = document.elementFromPoint(clientX, clientY);
   const container = target ? findBlockAncestor(target) : document.body;
   const rect = container.getBoundingClientRect();
 
-  const relX = rect.width > 0 ? Math.max(0, Math.min(1, (pageX - (rect.left + window.scrollX)) / rect.width)) : 0;
-  const relY = rect.height > 0 ? Math.max(0, Math.min(1, (pageY - (rect.top + window.scrollY)) / rect.height)) : 0;
+  const relX =
+    rect.width > 0
+      ? Math.max(0, Math.min(1, (pageX - (rect.left + window.scrollX)) / rect.width))
+      : 0;
+  const relY =
+    rect.height > 0
+      ? Math.max(0, Math.min(1, (pageY - (rect.top + window.scrollY)) / rect.height))
+      : 0;
   const textAnchor = captureTextAnchor(clientX, clientY);
   const selectedText = extractSelectedText(clientX, clientY);
 
@@ -186,15 +227,11 @@ function resolveViewportPos(annotation: Annotation): { left: number; top: number
     y: selector.y,
   });
 
-  if (
-    selector.textParentXPath &&
-    selector.textNodeIndex != null &&
-    selector.textOffset != null
-  ) {
+  if (selector.textParentXPath && selector.textNodeIndex != null && selector.textOffset != null) {
     const parent = findByXPath(selector.textParentXPath);
     if (parent) {
       const textNodes = Array.from(parent.childNodes).filter(
-        (n) => n.nodeType === Node.TEXT_NODE,
+        (n) => n.nodeType === Node.TEXT_NODE
       ) as Text[];
       const textNode = textNodes[selector.textNodeIndex];
       if (textNode) {
@@ -261,9 +298,7 @@ function getComposerPositionStyle(markerLeft: number, markerTop: number): CSSPro
   const opensLeft =
     markerLeft + MARKER_SIZE + COMPOSER_MARKER_GAP + COMPOSER_WIDTH + COMPOSER_EDGE_GAP >
     window.innerWidth;
-  const opensUp =
-    markerTop + COMPOSER_ESTIMATED_HEIGHT + COMPOSER_EDGE_GAP >
-    window.innerHeight;
+  const opensUp = markerTop + COMPOSER_ESTIMATED_HEIGHT + COMPOSER_EDGE_GAP > window.innerHeight;
 
   return {
     width: `${COMPOSER_WIDTH}px`,
@@ -399,7 +434,7 @@ export function AnnotationLayer() {
 
     const refreshPrefs = async () => {
       try {
-        const prefs = await sendMessage("getUserPrefs", undefined) as UserPrefs | undefined;
+        const prefs = (await sendMessage("getUserPrefs", undefined)) as UserPrefs | undefined;
         if (cancelled) return;
         setHidden((current) => {
           const next = prefs?.annotationsHidden ?? false;
@@ -407,10 +442,12 @@ export function AnnotationLayer() {
         });
         if (prefs?.theme === "dark" || prefs?.theme === "light") {
           const nextTheme = prefs.theme;
-          setTheme((current) => current === nextTheme ? current : nextTheme);
+          setTheme((current) => (current === nextTheme ? current : nextTheme));
         } else {
-          const nextTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          setTheme((current) => current === nextTheme ? current : nextTheme);
+          const nextTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+          setTheme((current) => (current === nextTheme ? current : nextTheme));
         }
       } catch (error) {
         debugAnnotations("Failed to load user preferences", error);
@@ -437,7 +474,7 @@ export function AnnotationLayer() {
       try {
         const identity = await sendMessage("getCurrentIdentity", undefined);
         if (!cancelled) {
-          setMyIdentity((current) => current === identity ? current : identity);
+          setMyIdentity((current) => (current === identity ? current : identity));
         }
       } catch (error) {
         debugAnnotations("Failed to load current identity", error);
@@ -492,14 +529,12 @@ export function AnnotationLayer() {
           if (next.targetUrl !== getCurrentTargetUrl()) return current;
           return [...current, next];
         }
-        return current.map((annotation) => annotation.id === next.id ? next : annotation);
+        return current.map((annotation) => (annotation.id === next.id ? next : annotation));
       });
     });
 
     const cleanupDeleted = onMessage(ANNOTATION_DELETED_EVENT, ({ data }) => {
-      setAnnotations((current) =>
-        current.filter((annotation) => annotation.id !== data.id),
-      );
+      setAnnotations((current) => current.filter((annotation) => annotation.id !== data.id));
       if (activeAnnotationIdRef.current === data.id) {
         setActiveAnnotationId(null);
         setNoteDraft("");
@@ -565,28 +600,25 @@ export function AnnotationLayer() {
         const point = lastContextMenuPoint.current ?? getViewportCenterPoint();
         const createdBy = (await sendMessage("getCurrentIdentity", undefined)) ?? undefined;
         const color = createdBy ? identityColor(createdBy) : "#18181b";
-        const response = await sendMessage(
-          "createAnnotation",
-          {
-            targetUrl: getCurrentTargetUrl(),
-            targetTitle: document.title || undefined,
-            selectedText: point.selectedText,
-            color,
-            selector: {
-              x: point.x,
-              y: point.y,
-              textParentXPath: point.textParentXPath ?? null,
-              textNodeIndex: point.textNodeIndex ?? null,
-              textOffset: point.textOffset ?? null,
-              containerId: point.containerId ?? null,
-              containerXPath: point.containerXPath ?? null,
-              relX: point.relX,
-              relY: point.relY,
-            },
-            positionStart: point.textOffset,
-            positionEnd: point.textOffset != null ? point.textOffset + 1 : undefined,
+        const response = await sendMessage("createAnnotation", {
+          targetUrl: getCurrentTargetUrl(),
+          targetTitle: document.title || undefined,
+          selectedText: point.selectedText,
+          color,
+          selector: {
+            x: point.x,
+            y: point.y,
+            textParentXPath: point.textParentXPath ?? null,
+            textNodeIndex: point.textNodeIndex ?? null,
+            textOffset: point.textOffset ?? null,
+            containerId: point.containerId ?? null,
+            containerXPath: point.containerXPath ?? null,
+            relX: point.relX,
+            relY: point.relY,
           },
-        );
+          positionStart: point.textOffset,
+          positionEnd: point.textOffset != null ? point.textOffset + 1 : undefined,
+        });
 
         setAnnotations((current) => [...current, response.annotation]);
         debugAnnotations("Created annotation", {
@@ -604,12 +636,25 @@ export function AnnotationLayer() {
   }, []);
 
   useEffect(() => {
-    const updateViewport = () => setViewportTick((tick) => tick + 1);
+    let animationFrame: number | null = null;
+    const updateViewport = () => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        setViewportTick((tick) => tick + 1);
+      });
+    };
+
+    // Element scroll events do not bubble. Capture them at the document so
+    // annotations remain attached inside nested and double-scroll containers.
+    document.addEventListener("scroll", updateViewport, { capture: true, passive: true });
     window.addEventListener("scroll", updateViewport, { passive: true });
     window.addEventListener("resize", updateViewport);
     return () => {
+      document.removeEventListener("scroll", updateViewport, true);
       window.removeEventListener("scroll", updateViewport);
       window.removeEventListener("resize", updateViewport);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
   }, []);
 
@@ -649,14 +694,14 @@ export function AnnotationLayer() {
         payload: { note: noteDraft.trim() || null },
       });
       setAnnotations((current) =>
-        current.map((item) => item.id === annotation.id ? response.annotation : item),
+        current.map((item) => (item.id === annotation.id ? response.annotation : item))
       );
       setSavedId(annotation.id);
       setTimeout(() => setSavedId(null), 2000);
     } catch (error) {
       debugAnnotations("Failed to save annotation note", error);
     } finally {
-      setSavingId((current) => current === annotation.id ? null : current);
+      setSavingId((current) => (current === annotation.id ? null : current));
     }
   };
 
@@ -695,7 +740,9 @@ export function AnnotationLayer() {
         const textareaClassName = isDark
           ? "text-zinc-100 placeholder:text-zinc-500"
           : "text-zinc-950 placeholder:text-slate-400";
-        const footerClassName = isDark ? "border-zinc-800 bg-zinc-950" : "border-zinc-200 bg-slate-50";
+        const footerClassName = isDark
+          ? "border-zinc-800 bg-zinc-950"
+          : "border-zinc-200 bg-slate-50";
         const toolButtonClassName = isDark
           ? "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
           : "text-slate-600 hover:bg-slate-200 hover:text-slate-950";
@@ -716,13 +763,18 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Open annotation"
               onClick={() => openEditor(annotation)}
-              className="flex h-8 w-8 cursor-pointer select-none items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
+              className="flex h-[32px] w-[32px] cursor-pointer select-none items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
               style={{ backgroundColor: "#18181b" }}
             >
-              <img src={logo} alt="" draggable={false} className="h-[18px] w-[18px]" />
+              <img
+                src={logo}
+                alt=""
+                draggable={false}
+                className="h-[18px] w-[18px] translate-x-0.5"
+              />
               {markerNumber != null && (
                 <span
-                  className="absolute -bottom-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-[1.5px] border-white px-1 text-[9px] font-bold leading-none text-white shadow"
+                  className="absolute -bottom-[4px] -right-[4px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full border-[1.5px] border-white px-[4px] text-[9px] font-bold leading-none text-white shadow"
                   style={{ backgroundColor: "#18181b" }}
                 >
                   {markerNumber}
@@ -734,7 +786,7 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Remove annotation"
               onClick={() => removeAnnotation(annotation)}
-              className="absolute -right-1 -top-1 z-10 flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-zinc-950 bg-zinc-100 text-zinc-950 shadow hover:bg-white"
+              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 bg-zinc-100 text-zinc-950 shadow hover:bg-white"
             >
               <X size={11} />
             </button>
@@ -782,7 +834,9 @@ export function AnnotationLayer() {
                     className={`ek-scroll min-h-28 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-relaxed outline-none ${textareaClassName}`}
                   />
 
-                  <div className={`flex items-center justify-between border-t px-3 py-2.5 ${footerClassName}`}>
+                  <div
+                    className={`flex items-center justify-between border-t px-3 py-2.5 ${footerClassName}`}
+                  >
                     <div className="flex items-center gap-1">
                       {FORMAT_ACTIONS.map((action) => (
                         <Button
