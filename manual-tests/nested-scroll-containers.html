@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Annotation nested scroll test</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #09090b;
+        color: #f4f4f5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 760px;
+        background:
+          radial-gradient(circle at 15% 0%, rgb(37 99 235 / 18%), transparent 34rem),
+          #09090b;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 28px 32px 20px;
+        border-bottom: 1px solid #27272a;
+      }
+
+      .page-header h1 {
+        margin: 0 0 6px;
+        font-size: 24px;
+        letter-spacing: -0.03em;
+      }
+
+      .page-header p {
+        max-width: 720px;
+        margin: 0;
+        color: #a1a1aa;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .reset-button {
+        flex: none;
+        border: 1px solid #3f3f46;
+        border-radius: 8px;
+        padding: 9px 13px;
+        background: #18181b;
+        color: #fafafa;
+        cursor: pointer;
+      }
+
+      .reset-button:hover {
+        background: #27272a;
+      }
+
+      .workspace {
+        padding: 24px 32px 32px;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+        color: #d4d4d8;
+        font-size: 12px;
+      }
+
+      .legend span {
+        border: 1px solid #3f3f46;
+        border-radius: 999px;
+        padding: 5px 9px;
+        background: #18181b;
+      }
+
+      .outer-scroll {
+        height: 70vh;
+        min-height: 520px;
+        overflow: auto;
+        border: 2px solid #3b82f6;
+        border-radius: 14px;
+        background: #101014;
+        scrollbar-color: #3b82f6 #18181b;
+      }
+
+      .outer-content {
+        width: 1320px;
+        min-height: 1420px;
+        padding: 0 34px 80px;
+      }
+
+      .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 -34px 42px;
+        padding: 13px 34px;
+        border-bottom: 1px solid #27272a;
+        background: rgb(16 16 20 / 94%);
+        backdrop-filter: blur(10px);
+      }
+
+      .sticky-header strong {
+        color: #93c5fd;
+      }
+
+      .coordinates {
+        color: #a1a1aa;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      .target {
+        width: 720px;
+        border-left: 3px solid #3b82f6;
+        padding: 16px 18px;
+        background: #18181b;
+      }
+
+      .target strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #bfdbfe;
+      }
+
+      .target p {
+        margin: 0;
+        color: #d4d4d8;
+        line-height: 1.6;
+      }
+
+      .outer-target-two {
+        margin: 170px 0 130px 430px;
+      }
+
+      .inner-shell {
+        width: 900px;
+        margin-left: 170px;
+        border: 1px solid #52525b;
+        border-radius: 12px;
+        padding: 16px;
+        background: #141418;
+      }
+
+      .inner-shell h2 {
+        margin: 0 0 5px;
+        font-size: 16px;
+      }
+
+      .inner-shell > p {
+        margin: 0 0 13px;
+        color: #a1a1aa;
+        font-size: 13px;
+      }
+
+      .inner-scroll {
+        width: 100%;
+        height: 360px;
+        overflow: auto;
+        border: 2px solid #f59e0b;
+        border-radius: 9px;
+        background: #0c0c0f;
+        scrollbar-color: #f59e0b #18181b;
+      }
+
+      .inner-content {
+        width: 1180px;
+        min-height: 920px;
+        padding: 34px;
+      }
+
+      .inner-target-one {
+        margin: 150px 0 0 420px;
+        border-left-color: #f59e0b;
+      }
+
+      .inner-target-one strong {
+        color: #fde68a;
+      }
+
+      .inner-target-two {
+        margin: 250px 0 0 80px;
+        border-left-color: #10b981;
+      }
+
+      .inner-target-two strong {
+        color: #a7f3d0;
+      }
+
+      .final-target {
+        margin: 180px 0 0 250px;
+        border-left-color: #a855f7;
+      }
+
+      .final-target strong {
+        color: #e9d5ff;
+      }
+
+      code {
+        color: #e4e4e7;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <h1>Nested scroll annotation test</h1>
+        <p>
+          Add annotations to the labeled text, then scroll the blue outer container and the amber
+          inner container independently. Test both vertical and horizontal movement.
+        </p>
+      </div>
+      <button class="reset-button" id="reset-scroll" type="button">Reset scroll positions</button>
+    </header>
+
+    <main class="workspace">
+      <div class="legend" aria-label="Test instructions">
+        <span>Blue border: outer scroll container</span>
+        <span>Amber border: nested inner container</span>
+        <span>Right-click labeled text to add markers</span>
+      </div>
+
+      <section
+        class="outer-scroll"
+        id="outer-scroll"
+        aria-label="Outer scroll container"
+        tabindex="0"
+      >
+        <div class="outer-content">
+          <div class="sticky-header">
+            <strong>Outer scroll container</strong>
+            <span class="coordinates" id="outer-position">left 0 · top 0</span>
+          </div>
+
+          <article class="target">
+            <strong>Target A — outer container only</strong>
+            <p>
+              Annotate this sentence, then scroll the blue container vertically and horizontally.
+              The marker should remain attached to this block.
+            </p>
+          </article>
+
+          <article class="target outer-target-two">
+            <strong>Target B — displaced inside the outer container</strong>
+            <p>
+              This target starts farther right and lower down, making outer horizontal movement
+              easy to verify before testing the nested scroller.
+            </p>
+          </article>
+
+          <section class="inner-shell">
+            <h2>Nested inner scroll container</h2>
+            <p>
+              Markers inside this box must react to both ancestors and disappear outside the amber
+              clipping boundary.
+            </p>
+
+            <div
+              class="inner-scroll"
+              id="inner-scroll"
+              aria-label="Inner scroll container"
+              tabindex="0"
+            >
+              <div class="inner-content">
+                <article class="target inner-target-one">
+                  <strong>Target C — inner and outer scrolling</strong>
+                  <p>
+                    Annotate this sentence. First scroll only the amber container, then scroll only
+                    the blue container, and finally move both containers. The marker must hide when
+                    this text leaves the amber viewport.
+                  </p>
+                </article>
+
+                <article class="target inner-target-two">
+                  <strong>Target D — second nested position</strong>
+                  <p>
+                    Use this second inner target to detect stale positions, clipping, or markers
+                    that update for one scroll ancestor but not the other.
+                  </p>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <article class="target final-target">
+            <strong>Target E — after the nested container</strong>
+            <p>
+              This final outer target helps confirm that observing the inner scroller does not break
+              markers elsewhere in the outer scrolling surface.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const outer = document.querySelector("#outer-scroll");
+      const inner = document.querySelector("#inner-scroll");
+      const outerPosition = document.querySelector("#outer-position");
+
+      function updatePositionReadout() {
+        outerPosition.textContent = `left ${Math.round(outer.scrollLeft)} · top ${Math.round(outer.scrollTop)} · inner left ${Math.round(inner.scrollLeft)} · inner top ${Math.round(inner.scrollTop)}`;
+      }
+
+      outer.addEventListener("scroll", updatePositionReadout, { passive: true });
+      inner.addEventListener("scroll", updatePositionReadout, { passive: true });
+
+      document.querySelector("#reset-scroll").addEventListener("click", () => {
+        outer.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+        inner.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+      });
+    </script>
+  </body>
+</html>
