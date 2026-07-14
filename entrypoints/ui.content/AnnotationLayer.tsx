@@ -1,11 +1,9 @@
 import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { firestoreTimestampToMs, type Annotation } from "../../lib/annotations-api";
 import {
   captureAnnotationContextPoint,
-  getAnnotationAnchorViewportPoint,
   type AnnotationContextPoint,
-  type ResolvedAnnotationAnchor,
 } from "../../lib/annotation-anchors";
 import { onMessage, sendMessage } from "../../lib/messaging";
 import { DEBUG, debugLog } from "../../lib/debug";
@@ -13,20 +11,14 @@ import type { UserPrefs } from "../../lib/types";
 import { identityColor, identityInitial } from "../../lib/utils";
 import { Button } from "../../components/shared/Button";
 import { useAnnotationAnchors } from "../../hooks/use-annotation-anchors";
+import { useAnnotationMarkerPositioning } from "../../hooks/use-annotation-marker-positioning";
 import logo from "../../assets/ek-alt-blue.svg";
 
 type ResolvedTheme = "dark" | "light";
 
-type ResolvedViewportPosition = {
-  left: number;
-  top: number;
-};
-
 const MARKER_SIZE = 32;
 const COMPOSER_WIDTH = 320;
-const COMPOSER_ESTIMATED_HEIGHT = 280;
 const COMPOSER_MARKER_GAP = 4;
-const COMPOSER_EDGE_GAP = 12;
 const FORMAT_ACTIONS = [
   { icon: <Bold size={13} />, title: "Bold", prefix: "**", suffix: "**" },
   { icon: <Italic size={13} />, title: "Italic", prefix: "_", suffix: "_" },
@@ -59,41 +51,6 @@ function isToggleAnnotationsShortcut(event: KeyboardEvent) {
   );
 }
 
-function positionFromAnchor(anchorX: number, anchorY: number): ResolvedViewportPosition {
-  return {
-    left: anchorX - MARKER_SIZE / 2,
-    top: anchorY - MARKER_SIZE / 2,
-  };
-}
-
-function resolveViewportPos(
-  annotation: Annotation,
-  anchor: ResolvedAnnotationAnchor | null | undefined
-): ResolvedViewportPosition {
-  const point = anchor ? getAnnotationAnchorViewportPoint(anchor) : null;
-  if (point) return positionFromAnchor(point.x, point.y);
-
-  return {
-    left: annotation.selector.x - window.scrollX - MARKER_SIZE / 2,
-    top: annotation.selector.y - window.scrollY - MARKER_SIZE / 2,
-  };
-}
-
-function getComposerPositionStyle(markerLeft: number, markerTop: number): CSSProperties {
-  const opensLeft =
-    markerLeft + MARKER_SIZE + COMPOSER_MARKER_GAP + COMPOSER_WIDTH + COMPOSER_EDGE_GAP >
-    window.innerWidth;
-  const opensUp = markerTop + COMPOSER_ESTIMATED_HEIGHT + COMPOSER_EDGE_GAP > window.innerHeight;
-
-  return {
-    width: `${COMPOSER_WIDTH}px`,
-    ...(opensLeft
-      ? { right: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px` }
-      : { left: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px` }),
-    ...(opensUp ? { bottom: "0" } : { top: "0" }),
-  };
-}
-
 export function AnnotationLayer() {
   const [hidden, setHidden] = useState(false);
   const [theme, setTheme] = useState<ResolvedTheme>("dark");
@@ -104,7 +61,6 @@ export function AnnotationLayer() {
   const [noteDraft, setNoteDraft] = useState("");
   const [savedId, setSavedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [, setViewportTick] = useState(0);
   const lastContextMenuPoint = useRef<AnnotationContextPoint | null>(null);
   const activeAnnotationIdRef = useRef<string | null>(null);
   const refreshInFlightRef = useRef(false);
@@ -113,6 +69,7 @@ export function AnnotationLayer() {
     annotations,
     targetUrl
   );
+  const setMarkerElement = useAnnotationMarkerPositioning(annotations, anchors);
 
   const refreshAnnotations = async () => {
     if (refreshInFlightRef.current) return;
@@ -387,29 +344,6 @@ export function AnnotationLayer() {
     return cleanup;
   }, []);
 
-  useEffect(() => {
-    let animationFrame: number | null = null;
-    const updateViewport = () => {
-      if (animationFrame !== null) return;
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = null;
-        setViewportTick((tick) => tick + 1);
-      });
-    };
-
-    // Element scroll events do not bubble. Capture them at the document so
-    // annotations remain attached inside nested and double-scroll containers.
-    document.addEventListener("scroll", updateViewport, { capture: true, passive: true });
-    window.addEventListener("scroll", updateViewport, { passive: true });
-    window.addEventListener("resize", updateViewport);
-    return () => {
-      document.removeEventListener("scroll", updateViewport, true);
-      window.removeEventListener("scroll", updateViewport);
-      window.removeEventListener("resize", updateViewport);
-      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
-    };
-  }, []);
-
   const openEditor = (annotation: Annotation) => {
     if (activeAnnotationId === annotation.id) {
       setActiveAnnotationId(null);
@@ -475,7 +409,6 @@ export function AnnotationLayer() {
   return (
     <>
       {annotations.map((annotation) => {
-        const { left, top } = resolveViewportPos(annotation, anchors.get(annotation.id));
         if (anchorVisibility.get(annotation.id) === false) return null;
         const isActive = annotation.id === activeAnnotationId;
         const isSaving = savingId === annotation.id;
@@ -485,7 +418,6 @@ export function AnnotationLayer() {
         const initial = identityInitial(myIdentity ?? annotation.createdBy);
         const composerName = myIdentity || "Annotation";
         const isDark = theme === "dark";
-        const composerPositionStyle = getComposerPositionStyle(left, top);
         const composerClassName = isDark
           ? "border-zinc-700 bg-zinc-950 text-zinc-100 shadow-2xl"
           : "border-zinc-200 bg-white text-zinc-950 shadow-2xl";
@@ -503,10 +435,13 @@ export function AnnotationLayer() {
         return (
           <div
             key={annotation.id}
+            ref={setMarkerElement}
+            data-annotation-id={annotation.id}
             className={`fixed ${isActive ? "z-[101]" : "z-[100]"}`}
             style={{
-              left: `${left}px`,
-              top: `${top}px`,
+              left: 0,
+              top: 0,
+              transform: `translate3d(${annotation.selector.x - window.scrollX - MARKER_SIZE / 2}px, ${annotation.selector.y - window.scrollY - MARKER_SIZE / 2}px, 0)`,
               width: `${MARKER_SIZE}px`,
               height: `${MARKER_SIZE}px`,
               pointerEvents: "auto",
@@ -547,8 +482,13 @@ export function AnnotationLayer() {
 
             {isActive && (
               <div
+                data-annotation-composer
                 className={`absolute overflow-hidden rounded-xl border ${composerClassName}`}
-                style={composerPositionStyle}
+                style={{
+                  left: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px`,
+                  top: 0,
+                  width: `${COMPOSER_WIDTH}px`,
+                }}
               >
                 <Button
                   variant="icon"
