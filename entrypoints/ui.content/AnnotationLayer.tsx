@@ -2,7 +2,7 @@ import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "luci
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { firestoreTimestampToMs, type Annotation } from "../../lib/annotations-api";
 import { onMessage, sendMessage } from "../../lib/messaging";
-import { debugLog } from "../../lib/debug";
+import { DEBUG, debugLog } from "../../lib/debug";
 import type { UserPrefs } from "../../lib/types";
 import { identityColor, identityInitial } from "../../lib/utils";
 import { Button } from "../../components/shared/Button";
@@ -22,6 +22,11 @@ type ContextPoint = {
 };
 
 type ResolvedTheme = "dark" | "light";
+
+type ResolvedViewportPosition = {
+  left: number;
+  top: number;
+};
 
 const MARKER_SIZE = 32;
 const COMPOSER_WIDTH = 320;
@@ -44,6 +49,42 @@ const debugAnnotations = debugLog("[Euryka annotations]");
 function debugAnnotationPosition(message: string, details?: unknown) {
   if (!DEBUG_ANNOTATION_POSITIONING) return;
   debugAnnotations(message, details);
+}
+
+function summarizeAnnotationAnchor(annotation: Annotation) {
+  const selector = annotation.selector;
+  const textParent = selector.textParentXPath
+    ? findByXPath(selector.textParentXPath)
+    : null;
+  const textNode =
+    textParent && selector.textNodeIndex != null
+      ? (Array.from(textParent.childNodes).filter(
+          (node) => node.nodeType === Node.TEXT_NODE
+        )[selector.textNodeIndex] ?? null)
+      : null;
+  const container = selector.containerId
+    ? document.getElementById(selector.containerId)
+    : selector.containerXPath
+      ? findByXPath(selector.containerXPath)
+      : null;
+  const selectedTextAnchor = annotation.selectedText
+    ? findSnippetAnchor(annotation.selectedText)
+    : null;
+  const textAnchorResolves = Boolean(textNode && selector.textOffset != null);
+  const containerAnchorResolves = Boolean(container && selector.relX != null);
+  const selectedTextResolves = Boolean(selectedTextAnchor);
+
+  return {
+    id: annotation.id,
+    hasTextAnchor: Boolean(selector.textParentXPath),
+    textAnchorResolves,
+    hasContainerAnchor: Boolean(selector.containerId || selector.containerXPath),
+    containerAnchorResolves,
+    hasSelectedText: Boolean(annotation.selectedText),
+    selectedTextResolves,
+    usesAbsoluteFallback:
+      !textAnchorResolves && !containerAnchorResolves && !selectedTextResolves,
+  };
 }
 
 function isToggleAnnotationsShortcut(event: KeyboardEvent) {
@@ -215,7 +256,44 @@ function computeAnchor(
   };
 }
 
-function resolveViewportPos(annotation: Annotation): { left: number; top: number } {
+function positionFromAnchor(anchorX: number, anchorY: number): ResolvedViewportPosition {
+  return {
+    left: anchorX - MARKER_SIZE / 2,
+    top: anchorY - MARKER_SIZE / 2,
+  };
+}
+
+function resolveAnchorElement(annotation: Annotation): Element | null {
+  const selector = annotation.selector;
+
+  if (selector.textParentXPath && selector.textNodeIndex != null && selector.textOffset != null) {
+    const parent = findByXPath(selector.textParentXPath);
+    if (parent) {
+      const textNodes = Array.from(parent.childNodes).filter(
+        (node) => node.nodeType === Node.TEXT_NODE
+      );
+      if (textNodes[selector.textNodeIndex]) return parent;
+    }
+  }
+
+  if (selector.containerId && selector.relX != null) {
+    const container = document.getElementById(selector.containerId);
+    if (container) return container;
+  }
+
+  if (selector.containerXPath && selector.relX != null) {
+    const container = findByXPath(selector.containerXPath);
+    if (container) return container;
+  }
+
+  if (annotation.selectedText) {
+    return findSnippetAnchor(annotation.selectedText)?.element ?? null;
+  }
+
+  return null;
+}
+
+function resolveViewportPos(annotation: Annotation): ResolvedViewportPosition {
   const selector = annotation.selector;
   debugAnnotationPosition("Resolving annotation position", {
     id: annotation.id,
@@ -248,10 +326,7 @@ function resolveViewportPos(annotation: Annotation): { left: number; top: number
               id: annotation.id,
               rect: rectToDebug(rect),
             });
-            return {
-              left: rect.left - MARKER_SIZE / 2,
-              top: rect.top + rect.height / 2 - MARKER_SIZE / 2,
-            };
+            return positionFromAnchor(rect.left, rect.top + rect.height / 2);
           }
         } catch {
           // Fall through to container fallback.
@@ -262,10 +337,10 @@ function resolveViewportPos(annotation: Annotation): { left: number; top: number
 
   const tryContainer = (el: Element) => {
     const rect = el.getBoundingClientRect();
-    return {
-      left: rect.left + (selector.relX ?? 0) * rect.width - MARKER_SIZE / 2,
-      top: rect.top + (selector.relY ?? 0) * rect.height - MARKER_SIZE / 2,
-    };
+    return positionFromAnchor(
+      rect.left + (selector.relX ?? 0) * rect.width,
+      rect.top + (selector.relY ?? 0) * rect.height
+    );
   };
 
   if (selector.containerId && selector.relX != null) {
@@ -279,12 +354,12 @@ function resolveViewportPos(annotation: Annotation): { left: number; top: number
   }
 
   if (annotation.selectedText) {
-    const rect = findSnippetRect(annotation.selectedText);
-    if (rect) {
-      return {
-        left: rect.left - MARKER_SIZE / 2,
-        top: rect.top + rect.height / 2 - MARKER_SIZE / 2,
-      };
+    const anchor = findSnippetAnchor(annotation.selectedText);
+    if (anchor) {
+      return positionFromAnchor(
+        anchor.rect.left,
+        anchor.rect.top + anchor.rect.height / 2
+      );
     }
   }
 
@@ -309,7 +384,7 @@ function getComposerPositionStyle(markerLeft: number, markerTop: number): CSSPro
   };
 }
 
-function findSnippetRect(snippet: string): DOMRect | null {
+function findSnippetAnchor(snippet: string): { rect: DOMRect; element: Element } | null {
   const normalizedSnippet = normalizeText(snippet);
   if (!normalizedSnippet) return null;
 
@@ -327,7 +402,8 @@ function findSnippetRect(snippet: string): DOMRect | null {
       range.setStart(node, rawIndex);
       range.setEnd(node, Math.min(text.length, rawIndex + snippet.length));
       const rect = range.getBoundingClientRect();
-      if (rect.width || rect.height) return rect;
+      const element = node.parentElement;
+      if ((rect.width || rect.height) && element) return { rect, element };
     }
 
     node = walker.nextNode() as Text | null;
@@ -368,6 +444,9 @@ export function AnnotationLayer() {
   const [theme, setTheme] = useState<ResolvedTheme>("dark");
   const [myIdentity, setMyIdentity] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [anchorVisibility, setAnchorVisibility] = useState<Map<string, boolean>>(
+    () => new Map()
+  );
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -401,6 +480,12 @@ export function AnnotationLayer() {
       if (getCurrentTargetUrl() !== targetUrl) return;
 
       setAnnotations(results);
+      if (DEBUG) {
+        debugAnnotations(
+          "Loaded annotation anchor diagnostics",
+          results.map(summarizeAnnotationAnchor)
+        );
+      }
       if (
         activeAnnotationIdRef.current &&
         !results.some((annotation) => annotation.id === activeAnnotationIdRef.current)
@@ -492,6 +577,52 @@ export function AnnotationLayer() {
   useEffect(() => {
     activeAnnotationIdRef.current = activeAnnotationId;
   }, [activeAnnotationId]);
+
+  useEffect(() => {
+    if (!("IntersectionObserver" in window)) {
+      setAnchorVisibility(new Map());
+      return;
+    }
+
+    const annotationIdsByElement = new Map<Element, string[]>();
+    const initialVisibility = new Map<string, boolean>();
+
+    for (const annotation of annotations) {
+      const anchorElement = resolveAnchorElement(annotation);
+      if (!anchorElement) {
+        initialVisibility.set(annotation.id, true);
+        continue;
+      }
+
+      initialVisibility.set(annotation.id, false);
+      const ids = annotationIdsByElement.get(anchorElement) ?? [];
+      ids.push(annotation.id);
+      annotationIdsByElement.set(anchorElement, ids);
+    }
+
+    setAnchorVisibility(initialVisibility);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setAnchorVisibility((current) => {
+          const next = new Map(current);
+
+          for (const entry of entries) {
+            const isVisible = entry.isIntersecting && entry.intersectionRatio > 0;
+            for (const annotationId of annotationIdsByElement.get(entry.target) ?? []) {
+              next.set(annotationId, isVisible);
+            }
+          }
+
+          return next;
+        });
+      },
+      { root: null, threshold: 0 }
+    );
+
+    for (const element of annotationIdsByElement.keys()) observer.observe(element);
+    return () => observer.disconnect();
+  }, [annotations]);
 
   useEffect(() => {
     let toggling = false;
@@ -621,11 +752,18 @@ export function AnnotationLayer() {
         });
 
         setAnnotations((current) => [...current, response.annotation]);
-        debugAnnotations("Created annotation", {
-          id: response.annotation.id,
-          targetUrl: response.annotation.targetUrl,
-          selectedText: response.annotation.selectedText,
-        });
+        if (DEBUG) {
+          debugAnnotations("Created annotation", {
+            id: response.annotation.id,
+            targetUrl: response.annotation.targetUrl,
+            captured: {
+              hasTextAnchor: Boolean(point.textParentXPath),
+              hasContainerAnchor: Boolean(point.containerId || point.containerXPath),
+              hasSelectedText: Boolean(point.selectedText),
+            },
+            returned: summarizeAnnotationAnchor(response.annotation),
+          });
+        }
         setNoteDraft("");
       } catch (error) {
         debugAnnotations("Failed to create annotation", error);
@@ -724,6 +862,7 @@ export function AnnotationLayer() {
     <>
       {annotations.map((annotation) => {
         const { left, top } = resolveViewportPos(annotation);
+        if (anchorVisibility.get(annotation.id) === false) return null;
         const isActive = annotation.id === activeAnnotationId;
         const isSaving = savingId === annotation.id;
         const isSaved = savedId === annotation.id;
@@ -786,9 +925,10 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Remove annotation"
               onClick={() => removeAnnotation(annotation)}
-              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 bg-zinc-100 text-zinc-950 shadow hover:bg-white"
+              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 p-0 leading-none text-zinc-950 shadow hover:bg-white"
+              style={{ backgroundColor: "#f4f4f5" }}
             >
-              <X size={11} />
+              <X size={11} className="block h-[11px] w-[11px] shrink-0" />
             </button>
 
             {isActive && (
