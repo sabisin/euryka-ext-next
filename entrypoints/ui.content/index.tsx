@@ -7,6 +7,19 @@ import { sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
 import logo from "../../assets/ek-alt-blue.svg";
 
+const CONTENT_UI_HOST_CSS = `
+  :host {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999999 !important;
+    pointer-events: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+`;
+
 function ContentUiApp() {
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
 
@@ -53,19 +66,15 @@ export default defineContentScript({
 
     const ui = await createShadowRootUi(ctx, {
       name: "euryka-content-ui",
+      // WXT resets :host with `all: initial !important`; define host layout in
+      // the same shadow cascade so fixed overlays stay above site-owned layers.
+      css: CONTENT_UI_HOST_CSS,
       // inline + anchor body appends the shadow host to <body>
       // the DraggableButton inside uses position:fixed which works correctly
       position: "inline",
       anchor: "body",
       append: "last",
-      onMount(container, _shadow, shadowHost) {
-        shadowHost.style.position = "fixed";
-        shadowHost.style.inset = "0";
-        shadowHost.style.width = "100vw";
-        shadowHost.style.height = "100vh";
-        shadowHost.style.zIndex = "9999999";
-        shadowHost.style.pointerEvents = "none";
-        shadowHost.style.overflow = "visible";
+      onMount(container) {
         container.style.pointerEvents = "none";
 
         rootStore = container as unknown as Record<
