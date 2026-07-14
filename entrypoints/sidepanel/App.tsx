@@ -520,8 +520,9 @@ function SidePanel() {
   // ── Image analysis ────────────────────────────────────────────────────────
   const handleAnalyseImage = async (dragResult: DragImageResult, pageUrlOverride?: string) => {
     if (!selectedWorkspaceId) return;
+    // Image analysis is a temporary view. Stop an active response, but keep
+    // the chat route state so Back from the image returns to the same chat.
     handleStopChat();
-    setShowChatResult(false);
     const workspaceId = selectedWorkspaceId;
     setLoadingImage(true);
     setImageResult(null);
