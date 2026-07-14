@@ -1,25 +1,19 @@
 import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { firestoreTimestampToMs, type Annotation } from "../../lib/annotations-api";
+import {
+  captureAnnotationContextPoint,
+  getAnnotationAnchorViewportPoint,
+  type AnnotationContextPoint,
+  type ResolvedAnnotationAnchor,
+} from "../../lib/annotation-anchors";
 import { onMessage, sendMessage } from "../../lib/messaging";
 import { DEBUG, debugLog } from "../../lib/debug";
 import type { UserPrefs } from "../../lib/types";
 import { identityColor, identityInitial } from "../../lib/utils";
 import { Button } from "../../components/shared/Button";
+import { useAnnotationAnchors } from "../../hooks/use-annotation-anchors";
 import logo from "../../assets/ek-alt-blue.svg";
-
-type ContextPoint = {
-  x: number;
-  y: number;
-  selectedText?: string;
-  textParentXPath?: string;
-  textNodeIndex?: number;
-  textOffset?: number;
-  containerId?: string;
-  containerXPath: string;
-  relX: number;
-  relY: number;
-};
 
 type ResolvedTheme = "dark" | "light";
 
@@ -33,7 +27,6 @@ const COMPOSER_WIDTH = 320;
 const COMPOSER_ESTIMATED_HEIGHT = 280;
 const COMPOSER_MARKER_GAP = 4;
 const COMPOSER_EDGE_GAP = 12;
-const DEBUG_ANNOTATION_POSITIONING = false;
 const FORMAT_ACTIONS = [
   { icon: <Bold size={13} />, title: "Bold", prefix: "**", suffix: "**" },
   { icon: <Italic size={13} />, title: "Italic", prefix: "_", suffix: "_" },
@@ -46,44 +39,13 @@ const TOGGLE_ANNOTATIONS_SHORTCUT = "a";
 
 const debugAnnotations = debugLog("[Euryka annotations]");
 
-function debugAnnotationPosition(message: string, details?: unknown) {
-  if (!DEBUG_ANNOTATION_POSITIONING) return;
-  debugAnnotations(message, details);
-}
-
-function summarizeAnnotationAnchor(annotation: Annotation) {
+function summarizeAnnotationSelector(annotation: Annotation) {
   const selector = annotation.selector;
-  const textParent = selector.textParentXPath
-    ? findByXPath(selector.textParentXPath)
-    : null;
-  const textNode =
-    textParent && selector.textNodeIndex != null
-      ? (Array.from(textParent.childNodes).filter(
-          (node) => node.nodeType === Node.TEXT_NODE
-        )[selector.textNodeIndex] ?? null)
-      : null;
-  const container = selector.containerId
-    ? document.getElementById(selector.containerId)
-    : selector.containerXPath
-      ? findByXPath(selector.containerXPath)
-      : null;
-  const selectedTextAnchor = annotation.selectedText
-    ? findSnippetAnchor(annotation.selectedText)
-    : null;
-  const textAnchorResolves = Boolean(textNode && selector.textOffset != null);
-  const containerAnchorResolves = Boolean(container && selector.relX != null);
-  const selectedTextResolves = Boolean(selectedTextAnchor);
-
   return {
     id: annotation.id,
     hasTextAnchor: Boolean(selector.textParentXPath),
-    textAnchorResolves,
     hasContainerAnchor: Boolean(selector.containerId || selector.containerXPath),
-    containerAnchorResolves,
     hasSelectedText: Boolean(annotation.selectedText),
-    selectedTextResolves,
-    usesAbsoluteFallback:
-      !textAnchorResolves && !containerAnchorResolves && !selectedTextResolves,
   };
 }
 
@@ -97,165 +59,6 @@ function isToggleAnnotationsShortcut(event: KeyboardEvent) {
   );
 }
 
-function rectToDebug(rect: DOMRect) {
-  return {
-    left: Math.round(rect.left),
-    top: Math.round(rect.top),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-  };
-}
-
-const BLOCK_TAGS = new Set([
-  "BODY",
-  "DIV",
-  "SECTION",
-  "ARTICLE",
-  "MAIN",
-  "HEADER",
-  "FOOTER",
-  "ASIDE",
-  "NAV",
-  "FIGURE",
-  "IMG",
-  "TABLE",
-  "FORM",
-  "LI",
-  "BLOCKQUOTE",
-  "DETAILS",
-  "UL",
-  "OL",
-  "P",
-  "TD",
-  "TH",
-  "CAPTION",
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H5",
-  "H6",
-]);
-
-function findBlockAncestor(el: Element): Element {
-  let current: Element | null = el;
-  while (current && current !== document.documentElement) {
-    if (BLOCK_TAGS.has(current.tagName)) return current;
-    current = current.parentElement;
-  }
-  return document.body;
-}
-
-function getXPath(el: Element): string {
-  if (el === document.body) return "/html/body";
-  const parts: string[] = [];
-  let current: Element | null = el;
-  while (current && current !== document.body) {
-    const tag = current.tagName.toLowerCase();
-    const parent: Element | null = current.parentElement;
-    if (parent) {
-      const siblings = Array.from(parent.children).filter((c) => c.tagName === current!.tagName);
-      parts.unshift(siblings.length > 1 ? `${tag}[${siblings.indexOf(current) + 1}]` : tag);
-    }
-    current = parent;
-  }
-  return `/html/body/${parts.join("/")}`;
-}
-
-function findByXPath(xpath: string): Element | null {
-  try {
-    const result = document.evaluate(
-      xpath,
-      document,
-      null,
-      XPathResult.FIRST_ORDERED_NODE_TYPE,
-      null
-    );
-    return result.singleNodeValue as Element | null;
-  } catch {
-    return null;
-  }
-}
-
-function extractSelectedText(clientX: number, clientY: number): string | undefined {
-  const selected = window.getSelection()?.toString().replace(/\s+/g, " ").trim();
-  if (selected) return selected;
-
-  const range = (
-    document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    }
-  ).caretRangeFromPoint?.(clientX, clientY);
-  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return undefined;
-
-  const fullText = (range.startContainer as Text).data;
-  const offset = range.startOffset;
-  const words = fullText.split(/\s+/).filter(Boolean);
-  const before = fullText.slice(0, offset);
-  const wordIndex = before.split(/\s+/).filter(Boolean).length;
-  const start = Math.max(0, wordIndex - 2);
-  const end = Math.min(words.length, wordIndex + 3);
-  const snippet = words.slice(start, end).join(" ").trim();
-  return snippet || undefined;
-}
-
-function captureTextAnchor(
-  clientX: number,
-  clientY: number
-): { textParentXPath: string; textNodeIndex: number; textOffset: number } | null {
-  const range = (
-    document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    }
-  ).caretRangeFromPoint?.(clientX, clientY);
-  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
-
-  const textNode = range.startContainer as Text;
-  const parent = textNode.parentElement;
-  if (!parent) return null;
-
-  const textNodes = Array.from(parent.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE);
-  const textNodeIndex = textNodes.indexOf(textNode);
-  if (textNodeIndex < 0) return null;
-
-  return {
-    textParentXPath: getXPath(parent),
-    textNodeIndex,
-    textOffset: range.startOffset,
-  };
-}
-
-function computeAnchor(
-  clientX: number,
-  clientY: number,
-  pageX: number,
-  pageY: number
-): Omit<ContextPoint, "x" | "y"> {
-  const target = document.elementFromPoint(clientX, clientY);
-  const container = target ? findBlockAncestor(target) : document.body;
-  const rect = container.getBoundingClientRect();
-
-  const relX =
-    rect.width > 0
-      ? Math.max(0, Math.min(1, (pageX - (rect.left + window.scrollX)) / rect.width))
-      : 0;
-  const relY =
-    rect.height > 0
-      ? Math.max(0, Math.min(1, (pageY - (rect.top + window.scrollY)) / rect.height))
-      : 0;
-  const textAnchor = captureTextAnchor(clientX, clientY);
-  const selectedText = extractSelectedText(clientX, clientY);
-
-  return {
-    ...(textAnchor ?? {}),
-    selectedText,
-    containerId: container.id || undefined,
-    containerXPath: getXPath(container),
-    relX,
-    relY,
-  };
-}
-
 function positionFromAnchor(anchorX: number, anchorY: number): ResolvedViewportPosition {
   return {
     left: anchorX - MARKER_SIZE / 2,
@@ -263,109 +66,16 @@ function positionFromAnchor(anchorX: number, anchorY: number): ResolvedViewportP
   };
 }
 
-function resolveAnchorElement(annotation: Annotation): Element | null {
-  const selector = annotation.selector;
-
-  if (selector.textParentXPath && selector.textNodeIndex != null && selector.textOffset != null) {
-    const parent = findByXPath(selector.textParentXPath);
-    if (parent) {
-      const textNodes = Array.from(parent.childNodes).filter(
-        (node) => node.nodeType === Node.TEXT_NODE
-      );
-      if (textNodes[selector.textNodeIndex]) return parent;
-    }
-  }
-
-  if (selector.containerId && selector.relX != null) {
-    const container = document.getElementById(selector.containerId);
-    if (container) return container;
-  }
-
-  if (selector.containerXPath && selector.relX != null) {
-    const container = findByXPath(selector.containerXPath);
-    if (container) return container;
-  }
-
-  if (annotation.selectedText) {
-    return findSnippetAnchor(annotation.selectedText)?.element ?? null;
-  }
-
-  return null;
-}
-
-function resolveViewportPos(annotation: Annotation): ResolvedViewportPosition {
-  const selector = annotation.selector;
-  debugAnnotationPosition("Resolving annotation position", {
-    id: annotation.id,
-    createdBy: annotation.createdBy,
-    hasTextAnchor: Boolean(selector.textParentXPath),
-    hasContainerAnchor: Boolean(selector.containerId || selector.containerXPath),
-    hasSelectedText: Boolean(annotation.selectedText),
-    x: selector.x,
-    y: selector.y,
-  });
-
-  if (selector.textParentXPath && selector.textNodeIndex != null && selector.textOffset != null) {
-    const parent = findByXPath(selector.textParentXPath);
-    if (parent) {
-      const textNodes = Array.from(parent.childNodes).filter(
-        (n) => n.nodeType === Node.TEXT_NODE
-      ) as Text[];
-      const textNode = textNodes[selector.textNodeIndex];
-      if (textNode) {
-        try {
-          const range = document.createRange();
-          const max = textNode.data.length;
-          const start = Math.min(selector.textOffset, max);
-          const end = Math.min(start + 1, max);
-          range.setStart(textNode, start);
-          range.setEnd(textNode, Math.max(end, start));
-          const rect = range.getBoundingClientRect();
-          if (rect.width || rect.height || rect.left || rect.top) {
-            debugAnnotationPosition("Resolved annotation with text anchor", {
-              id: annotation.id,
-              rect: rectToDebug(rect),
-            });
-            return positionFromAnchor(rect.left, rect.top + rect.height / 2);
-          }
-        } catch {
-          // Fall through to container fallback.
-        }
-      }
-    }
-  }
-
-  const tryContainer = (el: Element) => {
-    const rect = el.getBoundingClientRect();
-    return positionFromAnchor(
-      rect.left + (selector.relX ?? 0) * rect.width,
-      rect.top + (selector.relY ?? 0) * rect.height
-    );
-  };
-
-  if (selector.containerId && selector.relX != null) {
-    const el = document.getElementById(selector.containerId);
-    if (el) return tryContainer(el);
-  }
-
-  if (selector.containerXPath && selector.relX != null) {
-    const el = findByXPath(selector.containerXPath);
-    if (el) return tryContainer(el);
-  }
-
-  if (annotation.selectedText) {
-    const anchor = findSnippetAnchor(annotation.selectedText);
-    if (anchor) {
-      return positionFromAnchor(
-        anchor.rect.left,
-        anchor.rect.top + anchor.rect.height / 2
-      );
-    }
-  }
+function resolveViewportPos(
+  annotation: Annotation,
+  anchor: ResolvedAnnotationAnchor | null | undefined
+): ResolvedViewportPosition {
+  const point = anchor ? getAnnotationAnchorViewportPoint(anchor) : null;
+  if (point) return positionFromAnchor(point.x, point.y);
 
   return {
-    left: selector.x - window.scrollX - MARKER_SIZE / 2,
-    top: selector.y - window.scrollY - MARKER_SIZE / 2,
+    left: annotation.selector.x - window.scrollX - MARKER_SIZE / 2,
+    top: annotation.selector.y - window.scrollY - MARKER_SIZE / 2,
   };
 }
 
@@ -384,78 +94,25 @@ function getComposerPositionStyle(markerLeft: number, markerTop: number): CSSPro
   };
 }
 
-function findSnippetAnchor(snippet: string): { rect: DOMRect; element: Element } | null {
-  const normalizedSnippet = normalizeText(snippet);
-  if (!normalizedSnippet) return null;
-
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode() as Text | null;
-
-  while (node) {
-    const text = node.data;
-    const normalizedText = normalizeText(text);
-    const normalizedIndex = normalizedText.indexOf(normalizedSnippet);
-
-    if (normalizedIndex >= 0) {
-      const rawIndex = findRawIndexForNormalizedIndex(text, normalizedIndex);
-      const range = document.createRange();
-      range.setStart(node, rawIndex);
-      range.setEnd(node, Math.min(text.length, rawIndex + snippet.length));
-      const rect = range.getBoundingClientRect();
-      const element = node.parentElement;
-      if ((rect.width || rect.height) && element) return { rect, element };
-    }
-
-    node = walker.nextNode() as Text | null;
-  }
-
-  return null;
-}
-
-function normalizeText(value: string): string {
-  return value.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function findRawIndexForNormalizedIndex(value: string, normalizedIndex: number): number {
-  let normalizedCount = 0;
-  let inWhitespace = false;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    if (/\s/.test(char)) {
-      if (!inWhitespace) {
-        if (normalizedCount === normalizedIndex) return index;
-        normalizedCount += 1;
-        inWhitespace = true;
-      }
-      continue;
-    }
-
-    if (normalizedCount === normalizedIndex) return index;
-    normalizedCount += 1;
-    inWhitespace = false;
-  }
-
-  return 0;
-}
-
 export function AnnotationLayer() {
   const [hidden, setHidden] = useState(false);
   const [theme, setTheme] = useState<ResolvedTheme>("dark");
   const [myIdentity, setMyIdentity] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [anchorVisibility, setAnchorVisibility] = useState<Map<string, boolean>>(
-    () => new Map()
-  );
+  const [targetUrl, setTargetUrl] = useState(getCurrentTargetUrl);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [savedId, setSavedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [, setViewportTick] = useState(0);
-  const lastContextMenuPoint = useRef<ContextPoint | null>(null);
+  const lastContextMenuPoint = useRef<AnnotationContextPoint | null>(null);
   const activeAnnotationIdRef = useRef<string | null>(null);
   const refreshInFlightRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { anchors, visibility: anchorVisibility } = useAnnotationAnchors(
+    annotations,
+    targetUrl
+  );
 
   const refreshAnnotations = async () => {
     if (refreshInFlightRef.current) return;
@@ -483,7 +140,7 @@ export function AnnotationLayer() {
       if (DEBUG) {
         debugAnnotations(
           "Loaded annotation anchor diagnostics",
-          results.map(summarizeAnnotationAnchor)
+          results.map(summarizeAnnotationSelector)
         );
       }
       if (
@@ -579,52 +236,6 @@ export function AnnotationLayer() {
   }, [activeAnnotationId]);
 
   useEffect(() => {
-    if (!("IntersectionObserver" in window)) {
-      setAnchorVisibility(new Map());
-      return;
-    }
-
-    const annotationIdsByElement = new Map<Element, string[]>();
-    const initialVisibility = new Map<string, boolean>();
-
-    for (const annotation of annotations) {
-      const anchorElement = resolveAnchorElement(annotation);
-      if (!anchorElement) {
-        initialVisibility.set(annotation.id, true);
-        continue;
-      }
-
-      initialVisibility.set(annotation.id, false);
-      const ids = annotationIdsByElement.get(anchorElement) ?? [];
-      ids.push(annotation.id);
-      annotationIdsByElement.set(anchorElement, ids);
-    }
-
-    setAnchorVisibility(initialVisibility);
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        setAnchorVisibility((current) => {
-          const next = new Map(current);
-
-          for (const entry of entries) {
-            const isVisible = entry.isIntersecting && entry.intersectionRatio > 0;
-            for (const annotationId of annotationIdsByElement.get(entry.target) ?? []) {
-              next.set(annotationId, isVisible);
-            }
-          }
-
-          return next;
-        });
-      },
-      { root: null, threshold: 0 }
-    );
-
-    for (const element of annotationIdsByElement.keys()) observer.observe(element);
-    return () => observer.disconnect();
-  }, [annotations]);
-
-  useEffect(() => {
     let toggling = false;
 
     const toggleAnnotations = async (event: KeyboardEvent) => {
@@ -692,8 +303,10 @@ export function AnnotationLayer() {
     // Poll the URL (history events alone miss pushState) and reload on change.
     let lastUrl = getCurrentTargetUrl();
     const handleUrlChange = () => {
-      if (getCurrentTargetUrl() === lastUrl) return;
-      lastUrl = getCurrentTargetUrl();
+      const nextUrl = getCurrentTargetUrl();
+      if (nextUrl === lastUrl) return;
+      lastUrl = nextUrl;
+      setTargetUrl(nextUrl);
       setAnnotations([]);
       setActiveAnnotationId(null);
       setNoteDraft("");
@@ -714,11 +327,12 @@ export function AnnotationLayer() {
 
   useEffect(() => {
     const captureContextMenuPoint = (event: MouseEvent) => {
-      lastContextMenuPoint.current = {
-        x: event.pageX,
-        y: event.pageY,
-        ...computeAnchor(event.clientX, event.clientY, event.pageX, event.pageY),
-      };
+      lastContextMenuPoint.current = captureAnnotationContextPoint(
+        event.clientX,
+        event.clientY,
+        event.pageX,
+        event.pageY
+      );
     };
 
     window.addEventListener("contextmenu", captureContextMenuPoint, true);
@@ -761,7 +375,7 @@ export function AnnotationLayer() {
               hasContainerAnchor: Boolean(point.containerId || point.containerXPath),
               hasSelectedText: Boolean(point.selectedText),
             },
-            returned: summarizeAnnotationAnchor(response.annotation),
+            returned: summarizeAnnotationSelector(response.annotation),
           });
         }
         setNoteDraft("");
@@ -861,7 +475,7 @@ export function AnnotationLayer() {
   return (
     <>
       {annotations.map((annotation) => {
-        const { left, top } = resolveViewportPos(annotation);
+        const { left, top } = resolveViewportPos(annotation, anchors.get(annotation.id));
         if (anchorVisibility.get(annotation.id) === false) return null;
         const isActive = annotation.id === activeAnnotationId;
         const isSaving = savingId === annotation.id;
@@ -1030,10 +644,10 @@ function getCurrentTargetUrl(): string {
   return location.href;
 }
 
-function getViewportCenterPoint(): ContextPoint {
+function getViewportCenterPoint(): AnnotationContextPoint {
   const clientX = window.innerWidth / 2;
   const clientY = window.innerHeight / 2;
   const pageX = window.scrollX + clientX;
   const pageY = window.scrollY + clientY;
-  return { x: pageX, y: pageY, ...computeAnchor(clientX, clientY, pageX, pageY) };
+  return captureAnnotationContextPoint(clientX, clientY, pageX, pageY);
 }
