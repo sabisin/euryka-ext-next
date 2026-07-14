@@ -1,7 +1,8 @@
 /// <reference path="../../.wxt/wxt.d.ts" />
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Monitor, Moon, Sun } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { ThemeProvider } from "../../hooks/use-theme";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,16 +21,36 @@ import {
 } from "../../lib/storage";
 import { decodeJwt, getValidToken, runWithTokenRetry } from "../../lib/auth";
 import type { LanguageModelSession } from "../../lib/chrome-ai";
-import {
-  compactPageContent,
-  compactPageContentV2,
-  type PageContentBlock,
-  type PageContextMode,
-} from "../../lib/page-context";
+import type { PageContextMode } from "../../lib/page-context";
 import { DEBUG, debugLog } from "../../lib/debug";
 import { analyseImage as apiAnalyseImage, fetchSparks } from "../../lib/api";
 import { openChatThread, streamChatResponse } from "../../lib/chat-api";
 import { uploadFileWithRetry } from "../../lib/image-utils";
+import {
+  buildChromeChatPrompt,
+  CHROME_RETRY_PROMPT_LIMITS,
+  getChatContextLimitState,
+  isInputTooLargeError,
+  promptChromeSession,
+  SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS,
+  SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS,
+  toChatApiMessages,
+  type ChatContextCounts,
+  type ChatPromptContext,
+} from "../../lib/chat-prompt";
+import {
+  buildSparkCatalog,
+  buildSparkCatalogText,
+  summarizeSparkCatalog,
+  summarizeSparkGroups,
+  type SparkCatalogItem,
+} from "../../lib/spark-catalog";
+import {
+  buildSparkRecommendationAssistantMessage,
+  buildSparkRecommendationUserPrompt,
+  resolveSparkRecommendation,
+  type SparkRecommendationResult,
+} from "../../lib/spark-recommendation";
 import {
   buildFallbackProspect,
   DEFAULT_LINKEDIN_PROSPECTOR_STATUS,
@@ -41,26 +62,19 @@ import { useRunSpark } from "../../hooks/use-sparks";
 import { LoggedOut } from "../../components/layout/LoggedOut";
 import { Header } from "../../components/layout/Header";
 import { AppSidebar, NavRail } from "../../components/layout/AppSidebar";
-import { AnnotationsList } from "../../components/annotations/AnnotationsList";
-import { AnnotationHeaderTitle, AnnotationView } from "../../components/annotations/AnnotationView";
-import { SparksGallery } from "../../components/sparks/SparksGallery";
+import { AnnotationHeaderTitle } from "../../components/annotations/AnnotationView";
 import { ContextSelector } from "../../components/sparks/ContextSelector";
-import { SparksResult } from "../../components/sparks/SparksResult";
-import { ChatResult } from "../../components/sparks/ChatResult";
-import { ProspectorResult } from "../../components/sparks/ProspectorResult";
-import { HistoryList } from "../../components/history/HistoryList";
-import { SessionHeaderTitle, SessionView } from "../../components/history/SessionView";
-import { CollectionsList } from "../../components/collections/CollectionsList";
-import { CollectionView } from "../../components/collections/CollectionView";
-import { CollectionItemView } from "../../components/collections/CollectionItemView";
+import { SessionHeaderTitle } from "../../components/history/SessionView";
 import { DropzoneOverlay } from "../../components/image/DropzoneOverlay";
-import { ImageResult } from "../../components/image/ImageResult";
 import { Button } from "../../components/shared/Button";
-import { ChatApiKeySettings } from "../../components/settings/ChatApiKeySettings";
+import { AnnotationsPage } from "../../components/pages/AnnotationsPage";
+import { CollectionsPage } from "../../components/pages/CollectionsPage";
+import { HistoryPage } from "../../components/pages/HistoryPage";
+import { SettingsPage } from "../../components/pages/SettingsPage";
+import { SparksPage } from "../../components/pages/SparksPage";
 import type {
   AuthState,
   ChatMode,
-  ChatMessage,
   ChatUiMessage,
   Collection,
   CollectionItem,
@@ -69,7 +83,6 @@ import type {
   LinkedInProspectorStatus,
   Spark,
   SparkGroup,
-  SparkRecommendation,
   UserPrefs,
 } from "../../lib/types";
 
@@ -102,49 +115,6 @@ const CHROME_CHAT_SESSION_OPTIONS = {
   expectedInputs: [{ type: "text", languages: ["en"] }],
   expectedOutputs: [{ type: "text", languages: ["en"] }],
 };
-const CHROME_PAGE_CONTENT_CHAR_LIMIT = 10_000;
-const CHROME_SELECTED_TEXT_CHAR_LIMIT = 4_000;
-const CHROME_HISTORY_CHAR_LIMIT = 4_000;
-const CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT = 4_000;
-const CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT = 2_000;
-const CHROME_RETRY_HISTORY_CHAR_LIMIT = 2_000;
-const CHROME_SPARK_RECOMMENDATION_PAGE_CONTENT_CHAR_LIMIT = 1_500;
-const CHROME_SPARK_RECOMMENDATION_SELECTED_TEXT_CHAR_LIMIT = 1_000;
-const CHROME_SPARK_RECOMMENDATION_HISTORY_CHAR_LIMIT = 9_000;
-const CHROME_SPARK_RECOMMENDATION_RETRY_PAGE_CONTENT_CHAR_LIMIT = 700;
-const CHROME_SPARK_RECOMMENDATION_RETRY_SELECTED_TEXT_CHAR_LIMIT = 500;
-const CHROME_SPARK_RECOMMENDATION_RETRY_HISTORY_CHAR_LIMIT = 5_000;
-
-interface ChatPromptContext {
-  pageUrl: string;
-  pageContent: string;
-  pageBlocks: PageContentBlock[];
-  selectedText: string;
-}
-
-interface ChatContextCounts {
-  pageContent: number | null;
-  selectedText: number | null;
-}
-
-interface SparkCatalogItem {
-  id: string;
-  title: string;
-  description: string;
-  groups: string[];
-}
-
-interface SparkRecommendationResult {
-  recommendation: SparkRecommendation;
-  spark: Spark;
-  rawText: string;
-}
-
-interface ChatContextLimitState {
-  exceedsPageContentLimit: boolean;
-  exceedsSelectedTextLimit: boolean;
-}
-
 function SidePanel() {
   const [auth] = useStorageItem<AuthState>(authStorage);
   const [chatApiKey, setChatApiKey] = useStorageItem<string>(chatApiKeyStorage);
@@ -157,6 +127,74 @@ function SidePanel() {
   );
   const [prospectorResult, setProspectorResult] = useState<LinkedInProspectData | null>(null);
 
+  const navigationState = useUIStore(
+    useShallow((state) => ({
+      currentPage: state.currentPage,
+      selectedWorkspaceId: state.selectedWorkspaceId,
+      selectedBrandId: state.selectedBrandId,
+      selectedProjectId: state.selectedProjectId,
+      selectedSession: state.selectedSession,
+      selectedMarkerId: state.selectedMarkerId,
+      selectedImageUrl: state.selectedImageUrl,
+      selectedCollectionId: state.selectedCollectionId,
+      selectedCollectionItemId: state.selectedCollectionItemId,
+    }))
+  );
+  const resultState = useUIStore(
+    useShallow((state) => ({
+      showSparkResult: state.showSparkResult,
+      sparkResult: state.sparkResult,
+      sparkResultSessionId: state.sparkResultSessionId,
+      sparkResultSourceUrl: state.sparkResultSourceUrl,
+      showChatResult: state.showChatResult,
+      activeSpark: state.activeSpark,
+      imageResult: state.imageResult,
+      imageResultSessionId: state.imageResultSessionId,
+    }))
+  );
+  const chatState = useUIStore(
+    useShallow((state) => ({
+      chatId: state.chatId,
+      chatMessages: state.chatMessages,
+      chatSources: state.chatSources,
+      chatError: state.chatError,
+      isChatStreaming: state.isChatStreaming,
+    }))
+  );
+  const activityState = useUIStore(
+    useShallow((state) => ({
+      isDragging: state.isDragging,
+      isLoadingSpark: state.isLoadingSpark,
+      isLoadingImage: state.isLoadingImage,
+      pendingAction: state.pendingAction,
+    }))
+  );
+  const actions = useUIStore(
+    useShallow((state) => ({
+      setPage: state.setPage,
+      setWorkspace: state.setWorkspace,
+      setBrand: state.setBrand,
+      setProject: state.setProject,
+      setSelectedSession: state.setSelectedSession,
+      setSelectedMarkerId: state.setSelectedMarkerId,
+      setSelectedImageUrl: state.setSelectedImageUrl,
+      setShowSparkResult: state.setShowSparkResult,
+      setShowChatResult: state.setShowChatResult,
+      setChatId: state.setChatId,
+      setChatMessages: state.setChatMessages,
+      setChatSources: state.setChatSources,
+      setChatError: state.setChatError,
+      setChatStreaming: state.setChatStreaming,
+      setIsDragging: state.setIsDragging,
+      setLoadingSpark: state.setLoadingSpark,
+      setLoadingImage: state.setLoadingImage,
+      setImageResult: state.setImageResult,
+      resetInnerViews: state.resetInnerViews,
+      setPendingAction: state.setPendingAction,
+      setSelectedCollectionId: state.setSelectedCollectionId,
+      setSelectedCollectionItemId: state.setSelectedCollectionItemId,
+    }))
+  );
   const {
     currentPage,
     selectedWorkspaceId,
@@ -165,25 +203,22 @@ function SidePanel() {
     selectedSession,
     selectedMarkerId,
     selectedImageUrl,
+    selectedCollectionId,
+    selectedCollectionItemId,
+  } = navigationState;
+  const {
     showSparkResult,
     sparkResult,
     sparkResultSessionId,
     sparkResultSourceUrl,
     showChatResult,
-    chatId,
-    chatMessages,
-    chatSources,
-    chatError,
-    isChatStreaming,
     activeSpark,
-    isDragging,
-    isLoadingSpark,
-    isLoadingImage,
     imageResult,
     imageResultSessionId,
-    pendingAction,
-    selectedCollectionId,
-    selectedCollectionItemId,
+  } = resultState;
+  const { chatId, chatMessages, chatSources, chatError, isChatStreaming } = chatState;
+  const { isDragging, isLoadingSpark, isLoadingImage, pendingAction } = activityState;
+  const {
     setPage,
     setWorkspace,
     setBrand,
@@ -206,7 +241,7 @@ function SidePanel() {
     setPendingAction,
     setSelectedCollectionId,
     setSelectedCollectionItemId,
-  } = useUIStore();
+  } = actions;
 
   const isLoggedIn = !!auth?.token;
   const hasChatApiKey = Boolean(chatApiKey?.trim());
@@ -944,11 +979,7 @@ function SidePanel() {
           context,
           suppressAssistantText
             ? SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS
-            : {
-                pageContentLimit: CHROME_RETRY_PAGE_CONTENT_CHAR_LIMIT,
-                selectedTextLimit: CHROME_RETRY_SELECTED_TEXT_CHAR_LIMIT,
-                historyLimit: CHROME_RETRY_HISTORY_CHAR_LIMIT,
-              },
+            : CHROME_RETRY_PROMPT_LIMITS,
           pageContextMode,
           query
         );
@@ -1387,233 +1418,137 @@ function SidePanel() {
         />
 
         <main className="flex-1 overflow-hidden">
-          {selectedImageUrl ? (
-            <ImageResult
-              imageUrl={selectedImageUrl}
-              result={imageResult}
-              sessionId={imageResultSessionId}
-              wsId={selectedWorkspaceId}
-              isLoading={isLoadingImage}
-              onBack={() => {
-                setSelectedImageUrl(null);
-                setImageResult(null);
+          {selectedImageUrl || currentPage === "sparks" ? (
+            <SparksPage
+              selectedImageUrl={selectedImageUrl}
+              imageProps={{
+                result: imageResult,
+                sessionId: imageResultSessionId,
+                wsId: selectedWorkspaceId,
+                isLoading: isLoadingImage,
+                onBack: () => {
+                  setSelectedImageUrl(null);
+                  setImageResult(null);
+                },
               }}
-            />
-          ) : currentPage === "sparks" ? (
-            showChatResult ? (
-              <ChatResult
-                messages={chatMessages}
-                sources={chatSources}
-                error={chatError}
-                isStreaming={isChatStreaming}
-                apiKeyAvailable={!ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable}
-                chatId={chatId}
-                mode={chatMode}
-                sparkRecommendationResult={sparkRecommendationResult}
-                includePageContent={includeChatPageContent}
-                pageContextMode={pageContextMode}
-                includeSelectedText={includeChatSelectedText}
-                pageContentCharCount={chatContextCounts.pageContent}
-                selectedTextCharCount={chatContextCounts.selectedText}
-                pageContentExceedsLimit={
-                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit
-                }
-                selectedTextExceedsLimit={
-                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit
-                }
-                chatContextStatus={chatUserNotice}
-                chatContextStatusTitle={chatUserNoticeTitle}
-                chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
-                onSubmit={(message) => handleStartChat(message, true)}
-                onStop={handleStopChat}
-                onOpenSettings={openChatSettings}
-                onOpenThread={handleOpenChatThread}
-                onModeChange={setChatMode}
-                onRunRecommendedSpark={handleUseSpark}
-                onIncludePageContentChange={handleIncludeChatPageContentChange}
-                onPageContextModeChange={setPageContextMode}
-                onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
-              />
-            ) : showSparkResult && prospectorResult ? (
-              <ProspectorResult
-                prospect={prospectorResult}
-                spark={LINKEDIN_PROSPECTOR_SPARK}
-                sourceUrl={sparkResultSourceUrl}
-                isLoading={isLoadingSpark}
-                wsId={selectedWorkspaceId}
-                brandId={selectedBrandId}
-                projectId={selectedProjectId}
-                onBack={() => {
+              showChatResult={showChatResult}
+              chatProps={{
+                messages: chatMessages,
+                sources: chatSources,
+                error: chatError,
+                isStreaming: isChatStreaming,
+                apiKeyAvailable: !ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable,
+                chatId,
+                mode: chatMode,
+                sparkRecommendationResult,
+                includePageContent: includeChatPageContent,
+                pageContextMode,
+                includeSelectedText: includeChatSelectedText,
+                pageContentCharCount: chatContextCounts.pageContent,
+                selectedTextCharCount: chatContextCounts.selectedText,
+                pageContentExceedsLimit:
+                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit,
+                selectedTextExceedsLimit:
+                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit,
+                chatContextStatus: chatUserNotice,
+                chatContextStatusTitle: chatUserNoticeTitle,
+                chatProviderStatus: DEBUG ? chatProviderDebugStatus : null,
+                onSubmit: (message) => handleStartChat(message, true),
+                onStop: handleStopChat,
+                onOpenSettings: openChatSettings,
+                onOpenThread: handleOpenChatThread,
+                onModeChange: setChatMode,
+                onRunRecommendedSpark: handleUseSpark,
+                onIncludePageContentChange: handleIncludeChatPageContentChange,
+                onPageContextModeChange: setPageContextMode,
+                onIncludeSelectedTextChange: handleIncludeChatSelectedTextChange,
+              }}
+              showSparkResult={showSparkResult}
+              prospectorResult={prospectorResult}
+              prospectorProps={{
+                spark: LINKEDIN_PROSPECTOR_SPARK,
+                sourceUrl: sparkResultSourceUrl,
+                isLoading: isLoadingSpark,
+                wsId: selectedWorkspaceId,
+                brandId: selectedBrandId,
+                projectId: selectedProjectId,
+                onBack: () => {
                   setProspectorResult(null);
                   setShowSparkResult(false);
-                }}
-              />
-            ) : showSparkResult && sparkResult ? (
-              <SparksResult
-                result={sparkResult}
-                sessionId={sparkResultSessionId}
-                sourceUrl={sparkResultSourceUrl}
-                spark={activeSpark}
-                wsId={selectedWorkspaceId}
-                onBack={() => setShowSparkResult(false)}
-              />
-            ) : isLoadingSpark ? (
-              <div className="flex flex-col gap-2 p-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="h-3 rounded bg-muted animate-pulse"
-                    style={{ width: `${60 + i * 10}%` }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <SparksGallery
-                lastFive={prefs?.lastFive ?? []}
-                currentUrl={currentTabUrl}
-                chatApiKeyAvailable={!ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable}
-                chatMode={chatMode}
-                includePageContent={includeChatPageContent}
-                pageContextMode={pageContextMode}
-                includeSelectedText={includeChatSelectedText}
-                pageContentCharCount={chatContextCounts.pageContent}
-                selectedTextCharCount={chatContextCounts.selectedText}
-                pageContentExceedsLimit={
-                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit
-                }
-                selectedTextExceedsLimit={
-                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit
-                }
-                chatContextStatus={chatUserNotice}
-                chatContextStatusTitle={chatUserNoticeTitle}
-                chatProviderStatus={DEBUG ? chatProviderDebugStatus : null}
-                prospector={{
+                },
+              }}
+              sparkResult={sparkResult}
+              sparkResultProps={{
+                sessionId: sparkResultSessionId,
+                sourceUrl: sparkResultSourceUrl,
+                spark: activeSpark,
+                wsId: selectedWorkspaceId,
+                onBack: () => setShowSparkResult(false),
+              }}
+              isLoadingSpark={isLoadingSpark}
+              galleryProps={{
+                lastFive: prefs?.lastFive ?? [],
+                currentUrl: currentTabUrl,
+                chatApiKeyAvailable: !ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable,
+                chatMode,
+                includePageContent: includeChatPageContent,
+                pageContextMode,
+                includeSelectedText: includeChatSelectedText,
+                pageContentCharCount: chatContextCounts.pageContent,
+                selectedTextCharCount: chatContextCounts.selectedText,
+                pageContentExceedsLimit:
+                  getChatContextLimitState(chatContextCounts).exceedsPageContentLimit,
+                selectedTextExceedsLimit:
+                  getChatContextLimitState(chatContextCounts).exceedsSelectedTextLimit,
+                chatContextStatus: chatUserNotice,
+                chatContextStatusTitle: chatUserNoticeTitle,
+                chatProviderStatus: DEBUG ? chatProviderDebugStatus : null,
+                prospector: {
                   visible: prospectorStatus.visible,
                   title: LINKEDIN_PROSPECTOR_SPARK.title,
                   description: LINKEDIN_PROSPECTOR_SPARK.description ?? "",
                   icon: LINKEDIN_PROSPECTOR_SPARK.icon ?? "Search",
                   color: LINKEDIN_PROSPECTOR_SPARK.color ?? "#0A66C2",
                   onClick: handleRunProspector,
-                }}
-                onUseSpark={handleUseSpark}
-                onStartChat={(message) => handleStartChat(message, false)}
-                onOpenChatSettings={openChatSettings}
-                onChatModeChange={setChatMode}
-                onIncludePageContentChange={handleIncludeChatPageContentChange}
-                onPageContextModeChange={setPageContextMode}
-                onIncludeSelectedTextChange={handleIncludeChatSelectedTextChange}
-              />
-            )
+                },
+                onUseSpark: handleUseSpark,
+                onStartChat: (message) => handleStartChat(message, false),
+                onOpenChatSettings: openChatSettings,
+                onChatModeChange: setChatMode,
+                onIncludePageContentChange: handleIncludeChatPageContentChange,
+                onPageContextModeChange: setPageContextMode,
+                onIncludeSelectedTextChange: handleIncludeChatSelectedTextChange,
+              }}
+            />
           ) : currentPage === "history" ? (
-            selectedSession ? (
-              <SessionView
-                session={selectedSession}
-                wsId={selectedWorkspaceId}
-                onBack={() => setSelectedSession(null)}
-              />
-            ) : (
-              <HistoryList wsId={selectedWorkspaceId} onSelectSession={setSelectedSession} />
-            )
+            <HistoryPage
+              selectedSession={selectedSession}
+              workspaceId={selectedWorkspaceId}
+              onSelectSession={setSelectedSession}
+            />
           ) : currentPage === "annotations" ? (
-            selectedMarkerId ? (
-              <AnnotationView
-                markerId={selectedMarkerId}
-                onBack={() => setSelectedMarkerId(null)}
-              />
-            ) : (
-              <AnnotationsList onSelectMarker={setSelectedMarkerId} />
-            )
+            <AnnotationsPage
+              selectedMarkerId={selectedMarkerId}
+              onSelectMarker={setSelectedMarkerId}
+            />
           ) : currentPage === "collections" ? (
-            selectedCollectionItemId ? (
-              <CollectionItemView
-                itemId={selectedCollectionItemId}
-                onBack={() => setSelectedCollectionItemId(null)}
-              />
-            ) : selectedCollectionId ? (
-              <CollectionView
-                collectionId={selectedCollectionId}
-                onBack={() => setSelectedCollectionId(null)}
-                onSelectItem={openCollectionItemFromCollection}
-              />
-            ) : (
-              <CollectionsList
-                onSelectCollection={setSelectedCollectionId}
-                onSelectItem={openCollectionItem}
-              />
-            )
+            <CollectionsPage
+              selectedCollectionId={selectedCollectionId}
+              selectedCollectionItemId={selectedCollectionItemId}
+              onSelectCollection={setSelectedCollectionId}
+              onSelectCollectionItem={setSelectedCollectionItemId}
+              onOpenItem={openCollectionItem}
+              onOpenItemFromCollection={openCollectionItemFromCollection}
+            />
           ) : currentPage === "settings" ? (
-            <div className="flex flex-col gap-px overflow-y-auto">
-              {ENABLE_EURYKA_CHAT_PROVIDER && (
-                <ChatApiKeySettings
-                  apiKey={chatApiKey ?? ""}
-                  onSave={setChatApiKey}
-                  onRemove={() => setChatApiKey("")}
-                />
-              )}
-              <div className="flex items-center justify-between border-b border-border px-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Theme</p>
-                  <p className="text-xs text-muted-foreground">Appearance preference</p>
-                </div>
-                <div className="flex items-center overflow-hidden rounded-lg border border-border">
-                  {(["system", "light", "dark"] as const).map((value) => {
-                    const active = (prefs?.theme ?? "system") === value;
-                    const icon =
-                      value === "system" ? (
-                        <Monitor size={13} />
-                      ) : value === "light" ? (
-                        <Sun size={13} />
-                      ) : (
-                        <Moon size={13} />
-                      );
-                    return (
-                      <Button
-                        key={value}
-                        variant={active ? "primary" : "icon"}
-                        size="icon-lg"
-                        title={value.charAt(0).toUpperCase() + value.slice(1)}
-                        onClick={() =>
-                          setPrefs((p) => ({
-                            ...DEFAULT_USER_PREFS,
-                            ...p,
-                            theme: value,
-                          }))
-                        }
-                        className="h-8 w-8 rounded-none"
-                      >
-                        {icon}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-b border-border px-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Floating button</p>
-                  <p className="text-xs text-muted-foreground">
-                    Show the quick-action button on pages
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="Show floating button"
-                  aria-checked={prefs?.showFloatingButton}
-                  onClick={() =>
-                    setPrefs((p) => ({
-                      ...DEFAULT_USER_PREFS,
-                      ...p,
-                      showFloatingButton: !p?.showFloatingButton,
-                    }))
-                  }
-                  className={`inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors ${prefs?.showFloatingButton ? "bg-primary" : "bg-muted"}`}
-                >
-                  <span
-                    className={`h-5 w-5 rounded-full bg-background shadow-sm ring-1 ring-border transition-transform ${prefs?.showFloatingButton ? "translate-x-4" : "translate-x-0"}`}
-                  />
-                </button>
-              </div>
-            </div>
+            <SettingsPage
+              chatProviderEnabled={ENABLE_EURYKA_CHAT_PROVIDER}
+              chatApiKey={chatApiKey ?? ""}
+              prefs={prefs}
+              defaultPrefs={DEFAULT_USER_PREFS}
+              onSaveChatApiKey={setChatApiKey}
+              onChangePrefs={setPrefs}
+            />
           ) : null}
         </main>
 
@@ -1630,155 +1565,6 @@ function SidePanel() {
       </div>
     </div>
   );
-}
-
-function buildSparkCatalog(groups: SparkGroup[]): SparkCatalogItem[] {
-  const byId = new Map<string, SparkCatalogItem>();
-
-  for (const group of groups) {
-    for (const spark of group.sparks) {
-      const groupTitle = spark.group ?? group.title ?? "";
-      const existing = byId.get(spark.id);
-      if (existing) {
-        if (groupTitle && !existing.groups.includes(groupTitle)) {
-          existing.groups.push(groupTitle);
-        }
-        continue;
-      }
-
-      byId.set(spark.id, {
-        id: spark.id,
-        title: spark.title,
-        description: spark.description ?? "",
-        groups: groupTitle ? [groupTitle] : [],
-      });
-    }
-  }
-
-  return [...byId.values()];
-}
-
-function summarizeSparkGroups(groups: SparkGroup[]) {
-  return {
-    groupCount: groups.length,
-    sparkCount: groups.reduce((count, group) => count + group.sparks.length, 0),
-    groups: groups.map((group) => ({
-      title: group.title,
-      descriptionChars: group.description?.length ?? 0,
-      sparkCount: group.sparks.length,
-    })),
-  };
-}
-
-function summarizeSparkCatalog(groups: SparkGroup[], catalog: SparkCatalogItem[]) {
-  const summary = summarizeSparkGroups(groups);
-  return {
-    ...summary,
-    uniqueSparkCount: catalog.length,
-  };
-}
-
-function buildSparkCatalogText(sparks: SparkCatalogItem[]): string {
-  return sparks
-    .map((spark, index) =>
-      [
-        `${index + 1}.`,
-        `id=${compactText(spark.id)}`,
-        `title=${compactText(spark.title)}`,
-        `desc=${compactText(spark.description)}`,
-        `groups=${compactText(spark.groups.join(", "))}`,
-      ].join(" ")
-    )
-    .join("\n");
-}
-
-function compactText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function buildSparkRecommendationUserPrompt(
-  userIntent: string,
-  sparks: SparkCatalogItem[]
-): string {
-  const catalogText = buildSparkCatalogText(sparks);
-  return [
-    "You are recommending one Euryka spark for the user's intent.",
-    "Choose exactly one spark from the provided catalog.",
-    "Return strict JSON only. Do not include markdown, commentary, or extra keys.",
-    'The JSON shape is: {"sparkId":"...","sparkTitle":"...","reason":"...","confidence":0.0}',
-    "Use sparkId as the authoritative identifier.",
-    "",
-    `User intent:\n${userIntent}`,
-    "",
-    `Spark catalog:\n${catalogText}`,
-  ].join("\n");
-}
-
-function resolveSparkRecommendation(
-  responseText: string,
-  sparks: Spark[]
-): SparkRecommendationResult | null {
-  const parsed = parseJsonObject(responseText);
-  if (!parsed) return null;
-
-  const sparkId = readString(parsed.sparkId);
-  const sparkTitle = readString(parsed.sparkTitle);
-  const normalizedTitle = normalizeSparkName(sparkTitle);
-  const spark =
-    (sparkId ? sparks.find((item) => item.id === sparkId) : undefined) ??
-    (normalizedTitle
-      ? sparks.find((item) => normalizeSparkName(item.title) === normalizedTitle)
-      : undefined);
-
-  if (!spark) return null;
-
-  const reason = readString(parsed.reason) || "This spark best matches the request you described.";
-  const confidence = readConfidence(parsed.confidence);
-
-  return {
-    spark,
-    rawText: responseText,
-    recommendation: {
-      sparkId: spark.id,
-      sparkTitle: spark.title,
-      reason,
-      ...(confidence !== undefined ? { confidence } : {}),
-    },
-  };
-}
-
-function buildSparkRecommendationAssistantMessage(result: SparkRecommendationResult): string {
-  return `I recommend **${result.spark.title}**.\n\n${result.recommendation.reason}`;
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-  const candidate = fenced ?? trimmed.slice(trimmed.indexOf("{"), trimmed.lastIndexOf("}") + 1);
-  if (!candidate || !candidate.startsWith("{") || !candidate.endsWith("}")) return null;
-
-  try {
-    const parsed: unknown = JSON.parse(candidate);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function readConfidence(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  if (value >= 0 && value <= 1) return value;
-  if (value > 1 && value <= 100) return value / 100;
-  return undefined;
-}
-
-function normalizeSparkName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 async function getOrCreateDefaultCollectionId(): Promise<string> {
@@ -1809,226 +1595,6 @@ async function getOrCreateDefaultCollectionId(): Promise<string> {
     id: collection.id,
   });
   return collection.id;
-}
-
-function toChatApiMessages(messages: ChatUiMessage[], context?: ChatPromptContext): ChatMessage[] {
-  const contextText = context ? buildContextText(context) : "";
-  const apiMessages: ChatMessage[] = messages.map((message) => ({
-    id: message.id,
-    role: message.role,
-    parts: [{ type: "text", text: message.content }],
-  }));
-
-  if (!contextText) return apiMessages;
-  return [
-    {
-      role: "system",
-      parts: [{ type: "text", text: contextText }],
-    },
-    ...apiMessages,
-  ];
-}
-
-interface ChromePromptLimits {
-  pageContentLimit: number;
-  selectedTextLimit: number;
-  historyLimit: number;
-}
-
-interface ChromePromptResult {
-  prompt: string;
-  userNotice: string | null;
-  userNoticeTitle: string | null;
-}
-
-const DEFAULT_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
-  pageContentLimit: CHROME_PAGE_CONTENT_CHAR_LIMIT,
-  selectedTextLimit: CHROME_SELECTED_TEXT_CHAR_LIMIT,
-  historyLimit: CHROME_HISTORY_CHAR_LIMIT,
-};
-
-const SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS: ChromePromptLimits = {
-  pageContentLimit: CHROME_SPARK_RECOMMENDATION_PAGE_CONTENT_CHAR_LIMIT,
-  selectedTextLimit: CHROME_SPARK_RECOMMENDATION_SELECTED_TEXT_CHAR_LIMIT,
-  historyLimit: CHROME_SPARK_RECOMMENDATION_HISTORY_CHAR_LIMIT,
-};
-
-const SPARK_RECOMMENDATION_CHROME_RETRY_PROMPT_LIMITS: ChromePromptLimits = {
-  pageContentLimit: CHROME_SPARK_RECOMMENDATION_RETRY_PAGE_CONTENT_CHAR_LIMIT,
-  selectedTextLimit: CHROME_SPARK_RECOMMENDATION_RETRY_SELECTED_TEXT_CHAR_LIMIT,
-  historyLimit: CHROME_SPARK_RECOMMENDATION_RETRY_HISTORY_CHAR_LIMIT,
-};
-
-function buildChromeChatPrompt(
-  messages: ChatUiMessage[],
-  context: ChatPromptContext,
-  limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS,
-  pageContextMode: PageContextMode = "trim",
-  query = messages.filter((message) => message.role === "user").at(-1)?.content ?? ""
-): ChromePromptResult {
-  const parts = [];
-  const compactedPageContent = (() => {
-    if (pageContextMode === "compact-v2") {
-      return compactPageContentV2(
-        context.pageBlocks,
-        context.pageContent,
-        query,
-        limits.pageContentLimit
-      );
-    }
-    if (pageContextMode === "compact") {
-      return compactPageContent(
-        context.pageBlocks,
-        context.pageContent,
-        query,
-        limits.pageContentLimit
-      );
-    }
-    return null;
-  })();
-  const clippedPageContent = compactedPageContent
-    ? { text: compactedPageContent.text, truncated: compactedPageContent.compacted }
-    : clipStart(context.pageContent, limits.pageContentLimit);
-  const clippedSelectedText = clipStart(context.selectedText, limits.selectedTextLimit);
-  const contextText = buildContextText({
-    pageUrl: context.pageUrl,
-    pageContent: clippedPageContent.text,
-    pageBlocks: [],
-    selectedText: clippedSelectedText.text,
-  });
-  if (contextText) parts.push(contextText);
-
-  const rawHistory = messages
-    .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content}`)
-    .join("\n\n");
-  const clippedHistory = clipEnd(rawHistory, limits.historyLimit);
-  if (clippedHistory.text) parts.push(`Conversation:\n${clippedHistory.text}`);
-
-  const trimmedDetails = [
-    clippedPageContent.truncated
-      ? compactedPageContent
-        ? `page context after compaction: ${clippedPageContent.text.length} of ${compactedPageContent.originalCharCount} chars (${compactedPageContent.selectedChunkCount}/${compactedPageContent.totalChunkCount} sections)`
-        : `page content after trimming: ${clippedPageContent.text.length} chars`
-      : null,
-    clippedSelectedText.truncated
-      ? `highlighted text after trimming: ${clippedSelectedText.text.length} chars`
-      : null,
-    clippedHistory.truncated
-      ? `chat history after trimming: ${clippedHistory.text.length} chars`
-      : null,
-  ].filter(Boolean);
-  const trimmedItems = [
-    clippedPageContent.truncated ? "page content" : null,
-    clippedSelectedText.truncated ? "highlighted text" : null,
-    clippedHistory.truncated ? "chat history" : null,
-  ].filter(Boolean);
-
-  return {
-    prompt: parts.join("\n\n---\n\n"),
-    userNotice: trimmedItems.length
-      ? compactedPageContent?.compacted && !clippedSelectedText.truncated && !clippedHistory.truncated
-        ? "Page context was compacted to relevant sections."
-        : "Number of chars exceeds model context. Content was reduced."
-      : null,
-    userNoticeTitle: trimmedDetails.length ? trimmedDetails.join(", ") : null,
-  };
-}
-
-function buildContextText(context: ChatPromptContext): string {
-  const parts = [];
-  if (context.pageUrl) parts.push(`Page URL:\n${context.pageUrl}`);
-  if (context.pageContent) parts.push(`Page content:\n${context.pageContent}`);
-  if (context.selectedText) parts.push(`Highlighted text:\n${context.selectedText}`);
-  return parts.join("\n\n");
-}
-
-async function promptChromeSession({
-  session,
-  prompt,
-  signal,
-  onText,
-}: {
-  session: LanguageModelSession;
-  prompt: string;
-  signal: AbortSignal;
-  onText: (content: string) => void;
-}): Promise<string> {
-  if (!session.promptStreaming) {
-    const response = await session.prompt(prompt, { signal });
-    onText(response);
-    return response;
-  }
-
-  const stream = session.promptStreaming(prompt, { signal });
-  let response = "";
-
-  if (isReadableStream(stream)) {
-    const reader = stream.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        response = mergeChromeStreamChunk(response, value);
-        onText(response);
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    return response;
-  }
-
-  for await (const chunk of stream) {
-    response = mergeChromeStreamChunk(response, chunk);
-    onText(response);
-  }
-
-  return response;
-}
-
-function isReadableStream(value: unknown): value is ReadableStream<string> {
-  return typeof value === "object" && value !== null && "getReader" in value;
-}
-
-function mergeChromeStreamChunk(current: string, chunk: string): string {
-  if (chunk.startsWith(current)) return chunk;
-  return current + chunk;
-}
-
-function clipStart(text: string, limit: number) {
-  if (text.length <= limit) return { text, truncated: false };
-  return {
-    text: `${text.slice(0, limit)}\n\n[Content trimmed for Google local model context limit.]`,
-    truncated: true,
-  };
-}
-
-function clipEnd(text: string, limit: number) {
-  if (text.length <= limit) return { text, truncated: false };
-  return {
-    text: `[Earlier conversation trimmed for Google local model context limit.]\n\n${text.slice(-limit)}`,
-    truncated: true,
-  };
-}
-
-function isInputTooLargeError(error: unknown): boolean {
-  // Chrome's Prompt API signals an oversized prompt with a QuotaExceededError
-  // DOMException or an "input is too large" message. Keep this check narrow:
-  // matching loosely (any "context"/"quota" mention) used to swallow unrelated
-  // failures and retry them with trimmed context instead of surfacing them.
-  if (error instanceof DOMException && error.name === "QuotaExceededError") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /input\s+is\s+too\s+large|too\s+many\s+tokens|exceeds?\s+(the\s+)?(context|quota|token)/i.test(
-    message
-  );
-}
-
-function getChatContextLimitState(counts: ChatContextCounts): ChatContextLimitState {
-  return {
-    exceedsPageContentLimit:
-      counts.pageContent !== null && counts.pageContent > CHROME_PAGE_CONTENT_CHAR_LIMIT,
-    exceedsSelectedTextLimit:
-      counts.selectedText !== null && counts.selectedText > CHROME_SELECTED_TEXT_CHAR_LIMIT,
-  };
 }
 
 export default function App() {
