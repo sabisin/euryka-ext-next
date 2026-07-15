@@ -1,9 +1,13 @@
+import { useEffect } from "react";
+import { debugLog } from "../../lib/debug";
+import { describeMarkdownContent } from "../../lib/markdown-diagnostics";
+import type { Spark } from "../../lib/types";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { IconWrapper } from "../shared/IconWrapper";
 import { StickyActionBar } from "../shared/StickyActionBar";
-import type { Spark } from "../../lib/types";
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+const logSparkRender = debugLog("[Euryka spark render]");
 
 interface Props {
   result: string;
@@ -20,6 +24,15 @@ export function SparksResult({ result, sessionId, sourceUrl, spark, wsId }: Prop
       ? `${BASE_URL}/api/ws/${wsId}/extension/sessions/${sessionId}/thread`
       : undefined;
   const sourceHost = getHostname(sourceUrl);
+
+  useEffect(() => {
+    logSparkRender("rendering markdown content", {
+      sparkId: spark?.id ?? null,
+      sparkTitle: spark?.title ?? null,
+      sessionId,
+      ...describeMarkdownContent(result),
+    });
+  }, [result, sessionId, spark?.id, spark?.title]);
 
   return (
     <div className="flex h-full flex-col">
