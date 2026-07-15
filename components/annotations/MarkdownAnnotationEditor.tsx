@@ -92,12 +92,31 @@ export function MarkdownAnnotationEditor({ content, saved, onChange, onSave, onD
 
   const setBlock = (value: (typeof BLOCK_FORMATS)[number]["value"]) => {
     if (!editor) return;
+    const { from, to, $head } = editor.state.selection;
+    const selectedRange = { from, to };
+
     if (value === "paragraph") {
-      runCommand(() => editor.chain().focus().setParagraph().run());
+      runCommand(() =>
+        editor
+          .chain()
+          .focus()
+          .setTextSelection($head.pos)
+          .setParagraph()
+          .setTextSelection(selectedRange)
+          .run()
+      );
       return;
     }
     const level = Number(value.slice(1)) as 1 | 2 | 3;
-    runCommand(() => editor.chain().focus().toggleHeading({ level }).run());
+    runCommand(() =>
+      editor
+        .chain()
+        .focus()
+        .setTextSelection($head.pos)
+        .toggleHeading({ level })
+        .setTextSelection(selectedRange)
+        .run()
+    );
   };
 
   return (
