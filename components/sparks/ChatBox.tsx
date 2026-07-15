@@ -1,7 +1,6 @@
 import { FileText, Highlighter, KeyRound, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import ekIcon from "../../assets/ek-icon.svg";
-import type { PageContextMode } from "../../lib/page-context";
 import type { ChatMode } from "../../lib/types";
 import { PromptInput, PromptInputToolButton } from "../shared/PromptInput";
 
@@ -10,7 +9,6 @@ interface Props {
   isStreaming?: boolean;
   compact?: boolean;
   includePageContent?: boolean;
-  pageContextMode?: PageContextMode;
   includeSelectedText?: boolean;
   mode?: ChatMode;
   pageContentCharCount?: number | null;
@@ -23,9 +21,9 @@ interface Props {
   onSubmit: (message: string) => void;
   onOpenSettings: () => void;
   onIncludePageContentChange?: (checked: boolean) => void;
-  onPageContextModeChange?: (mode: PageContextMode) => void;
   onIncludeSelectedTextChange?: (checked: boolean) => void;
   onModeChange?: (mode: ChatMode) => void;
+  onStop?: () => void;
 }
 
 export function ChatBox({
@@ -33,7 +31,6 @@ export function ChatBox({
   isStreaming = false,
   compact = false,
   includePageContent = true,
-  pageContextMode = "compact",
   includeSelectedText = false,
   mode = "chat",
   pageContentCharCount = null,
@@ -46,9 +43,9 @@ export function ChatBox({
   onSubmit,
   onOpenSettings,
   onIncludePageContentChange,
-  onPageContextModeChange,
   onIncludeSelectedTextChange,
   onModeChange,
+  onStop,
 }: Props) {
   const [message, setMessage] = useState("");
 
@@ -67,6 +64,7 @@ export function ChatBox({
         minRows={compact ? 1 : 2}
         placeholder="Ask Euryka..."
         submitStatus={isStreaming ? "streaming" : "ready"}
+        onStop={onStop}
         tools={
           <>
             <PromptInputToolButton
@@ -94,26 +92,6 @@ export function ChatBox({
                 </span>
               )}
             </PromptInputToolButton>
-            {includePageContent && (
-              <PromptInputToolButton
-                active
-                disabled={isStreaming}
-                onClick={() => onPageContextModeChange?.(nextPageContextMode(pageContextMode))}
-                title={
-                  pageContextMode === "compact"
-                    ? "Page mode: compact prompt-relevant sections. Click for balanced compaction."
-                    : pageContextMode === "compact-v2"
-                      ? "Page mode: preserve the page core, then add prompt-relevant sections. Click for legacy trimming."
-                      : "Page mode: trim from the end. Click for prompt-relevant compaction."
-                }
-              >
-                {pageContextMode === "compact"
-                  ? "Compact"
-                  : pageContextMode === "compact-v2"
-                    ? "Compact v2"
-                    : "Trim"}
-              </PromptInputToolButton>
-            )}
             <PromptInputToolButton
               active={includeSelectedText}
               disabled={isStreaming}
@@ -177,12 +155,6 @@ function ContextCount({ value, warning }: { value: number; warning: boolean }) {
       {value}
     </span>
   );
-}
-
-function nextPageContextMode(mode: PageContextMode): PageContextMode {
-  if (mode === "compact") return "compact-v2";
-  if (mode === "compact-v2") return "trim";
-  return "compact";
 }
 
 function getProviderTooltip(label: string): string {

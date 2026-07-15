@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, MessageSquareQuote, Play, Square } from "lucide-react";
+import { Check, Copy, MessageSquareQuote, Play, RotateCcw, Square } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
   ChatMode,
@@ -8,7 +8,6 @@ import type {
   Spark,
   SparkRecommendation,
 } from "../../lib/types";
-import type { PageContextMode } from "../../lib/page-context";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { Button } from "../shared/Button";
 import { IconWrapper } from "../shared/IconWrapper";
@@ -30,7 +29,6 @@ interface Props {
   mode: ChatMode;
   sparkRecommendationResult: SparkRecommendationResult | null;
   includePageContent: boolean;
-  pageContextMode: PageContextMode;
   includeSelectedText: boolean;
   pageContentCharCount: number | null;
   selectedTextCharCount: number | null;
@@ -41,12 +39,12 @@ interface Props {
   chatProviderStatus: string | null;
   onSubmit: (message: string) => void;
   onStop: () => void;
+  onRetry: () => void;
   onOpenSettings: () => void;
   onOpenThread: () => void;
   onModeChange: (mode: ChatMode) => void;
   onRunRecommendedSpark: (spark: Spark) => void;
   onIncludePageContentChange: (checked: boolean) => void;
-  onPageContextModeChange: (mode: PageContextMode) => void;
   onIncludeSelectedTextChange: (checked: boolean) => void;
 }
 
@@ -60,7 +58,6 @@ export function ChatResult({
   mode,
   sparkRecommendationResult,
   includePageContent,
-  pageContextMode,
   includeSelectedText,
   pageContentCharCount,
   selectedTextCharCount,
@@ -71,12 +68,12 @@ export function ChatResult({
   chatProviderStatus,
   onSubmit,
   onStop,
+  onRetry,
   onOpenSettings,
   onOpenThread,
   onModeChange,
   onRunRecommendedSpark,
   onIncludePageContentChange,
-  onPageContextModeChange,
   onIncludeSelectedTextChange,
 }: Props) {
   const [copied, setCopied] = useState(false);
@@ -199,6 +196,13 @@ export function ChatResult({
               Open in threads
             </Button>
           )}
+
+          {!isStreaming && messages.some((message) => message.role === "user") && (
+            <Button variant="ghost" size="sm" onClick={onRetry}>
+              <RotateCcw size={13} />
+              Try again
+            </Button>
+          )}
         </div>
 
         <ChatBox
@@ -207,7 +211,6 @@ export function ChatResult({
           isStreaming={isStreaming}
           mode={mode}
           includePageContent={includePageContent}
-          pageContextMode={pageContextMode}
           includeSelectedText={includeSelectedText}
           pageContentCharCount={pageContentCharCount}
           selectedTextCharCount={selectedTextCharCount}
@@ -217,10 +220,10 @@ export function ChatResult({
           contextStatusTitle={chatContextStatusTitle}
           providerStatus={chatProviderStatus}
           onSubmit={onSubmit}
+          onStop={onStop}
           onOpenSettings={onOpenSettings}
           onModeChange={onModeChange}
           onIncludePageContentChange={onIncludePageContentChange}
-          onPageContextModeChange={onPageContextModeChange}
           onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
       </div>

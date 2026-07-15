@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useSparks } from "../../hooks/use-sparks";
 import { DEBUG } from "../../lib/debug";
 import type { ChatMode, Spark } from "../../lib/types";
-import type { PageContextMode } from "../../lib/page-context";
 import { hexToRgba } from "../../lib/utils";
 import { IconWrapper } from "../shared/IconWrapper";
 import { ChatBox } from "./ChatBox";
@@ -23,7 +22,6 @@ interface Props {
   chatApiKeyAvailable: boolean;
   chatMode: ChatMode;
   includePageContent: boolean;
-  pageContextMode: PageContextMode;
   includeSelectedText: boolean;
   pageContentCharCount: number | null;
   selectedTextCharCount: number | null;
@@ -37,7 +35,6 @@ interface Props {
   onOpenChatSettings: () => void;
   onChatModeChange: (mode: ChatMode) => void;
   onIncludePageContentChange: (checked: boolean) => void;
-  onPageContextModeChange: (mode: PageContextMode) => void;
   onIncludeSelectedTextChange: (checked: boolean) => void;
 }
 
@@ -48,7 +45,6 @@ export function SparksGallery({
   chatApiKeyAvailable,
   chatMode,
   includePageContent,
-  pageContextMode,
   includeSelectedText,
   pageContentCharCount,
   selectedTextCharCount,
@@ -62,7 +58,6 @@ export function SparksGallery({
   onOpenChatSettings,
   onChatModeChange,
   onIncludePageContentChange,
-  onPageContextModeChange,
   onIncludeSelectedTextChange,
 }: Props) {
   const [search, setSearch] = useState("");
@@ -194,7 +189,6 @@ export function SparksGallery({
           apiKeyAvailable={chatApiKeyAvailable}
           mode={chatMode}
           includePageContent={includePageContent}
-          pageContextMode={pageContextMode}
           includeSelectedText={includeSelectedText}
           pageContentCharCount={pageContentCharCount}
           selectedTextCharCount={selectedTextCharCount}
@@ -207,7 +201,6 @@ export function SparksGallery({
           onOpenSettings={onOpenChatSettings}
           onModeChange={onChatModeChange}
           onIncludePageContentChange={onIncludePageContentChange}
-          onPageContextModeChange={onPageContextModeChange}
           onIncludeSelectedTextChange={onIncludeSelectedTextChange}
         />
       </div>

@@ -1,3 +1,4 @@
+import { LoaderCircle, Send, Square } from "lucide-react";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -6,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { LoaderCircle, Send, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
 
@@ -27,6 +27,7 @@ interface PromptInputProps {
   tools?: ReactNode;
   submitTitle?: string;
   submitStatus?: "ready" | "submitted" | "streaming";
+  onStop?: () => void;
 }
 
 export function PromptInput({
@@ -42,6 +43,7 @@ export function PromptInput({
   tools,
   submitTitle = "Send",
   submitStatus = "ready",
+  onStop,
 }: PromptInputProps) {
   const [internalValue, setInternalValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -49,6 +51,8 @@ export function PromptInput({
   const trimmed = text.trim();
 
   useEffect(() => {
+    // Recalculate when controlled or internal text changes.
+    void text;
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -82,6 +86,7 @@ export function PromptInput({
   };
 
   const isBusy = submitStatus === "submitted" || submitStatus === "streaming";
+  const isStreaming = submitStatus === "streaming";
 
   return (
     <form
@@ -110,14 +115,15 @@ export function PromptInput({
       <div className="flex min-h-11 items-center justify-between gap-2 px-2 pb-2 pt-1">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{tools}</div>
         <Button
-          type="submit"
+          type={isStreaming ? "button" : "submit"}
           variant="ghost"
           size="icon-lg"
-          title={submitTitle}
-          disabled={!trimmed || disabled}
+          title={isStreaming ? "Stop generating" : submitTitle}
+          disabled={isStreaming ? !onStop : !trimmed || disabled}
+          onClick={isStreaming ? onStop : undefined}
           className="self-center rounded-md text-muted-foreground leading-none hover:bg-accent hover:text-accent-foreground [&>svg]:block"
         >
-          {submitStatus === "streaming" ? (
+          {isStreaming ? (
             <Square size={13} />
           ) : isBusy ? (
             <LoaderCircle size={15} className="animate-spin" />

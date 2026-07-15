@@ -1,10 +1,6 @@
 import type { LanguageModelSession } from "./chrome-ai";
-import {
-  compactPageContent,
-  compactPageContentV2,
-  type PageContentBlock,
-  type PageContextMode,
-} from "./page-context";
+import type { PageContentBlock } from "./page-context";
+import { compactPageContentAdaptive } from "./page-context-experimental";
 import type { ChatMessage, ChatUiMessage } from "./types";
 
 const CHROME_PAGE_CONTENT_CHAR_LIMIT = 10_000;
@@ -89,32 +85,19 @@ export function buildChromeChatPrompt(
   messages: ChatUiMessage[],
   context: ChatPromptContext,
   limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS,
-  pageContextMode: PageContextMode = "trim",
   query = messages.filter((message) => message.role === "user").at(-1)?.content ?? ""
 ): ChromePromptResult {
   const parts = [];
-  const compactedPageContent = (() => {
-    if (pageContextMode === "compact-v2") {
-      return compactPageContentV2(
-        context.pageBlocks,
-        context.pageContent,
-        query,
-        limits.pageContentLimit
-      );
-    }
-    if (pageContextMode === "compact") {
-      return compactPageContent(
-        context.pageBlocks,
-        context.pageContent,
-        query,
-        limits.pageContentLimit
-      );
-    }
-    return null;
-  })();
-  const clippedPageContent = compactedPageContent
-    ? { text: compactedPageContent.text, truncated: compactedPageContent.compacted }
-    : clipStart(context.pageContent, limits.pageContentLimit);
+  const compactedPageContent = compactPageContentAdaptive(
+    context.pageBlocks,
+    context.pageContent,
+    query,
+    limits.pageContentLimit
+  );
+  const clippedPageContent = {
+    text: compactedPageContent.text,
+    truncated: compactedPageContent.compacted,
+  };
   const clippedSelectedText = clipStart(context.selectedText, limits.selectedTextLimit);
   const contextText = buildContextText({
     pageUrl: context.pageUrl,
@@ -132,9 +115,7 @@ export function buildChromeChatPrompt(
 
   const trimmedDetails = [
     clippedPageContent.truncated
-      ? compactedPageContent
-        ? `page context after compaction: ${clippedPageContent.text.length} of ${compactedPageContent.originalCharCount} chars (${compactedPageContent.selectedChunkCount}/${compactedPageContent.totalChunkCount} sections)`
-        : `page content after trimming: ${clippedPageContent.text.length} chars`
+      ? `page context after compaction: ${clippedPageContent.text.length} of ${compactedPageContent.originalCharCount} chars (${compactedPageContent.selectedChunkCount}/${compactedPageContent.totalChunkCount} sections)`
       : null,
     clippedSelectedText.truncated
       ? `highlighted text after trimming: ${clippedSelectedText.text.length} chars`
@@ -152,10 +133,10 @@ export function buildChromeChatPrompt(
   return {
     prompt: parts.join("\n\n---\n\n"),
     userNotice: trimmedItems.length
-      ? compactedPageContent?.compacted &&
+      ? compactedPageContent.compacted &&
         !clippedSelectedText.truncated &&
         !clippedHistory.truncated
-        ? "Page context was compacted to relevant sections."
+        ? "Page context was compacted because it exceeded the model limit."
         : "Number of chars exceeds model context. Content was reduced."
       : null,
     userNoticeTitle: trimmedDetails.length ? trimmedDetails.join(", ") : null,
@@ -225,12 +206,15 @@ export function isInputTooLargeError(error: unknown): boolean {
   );
 }
 
-export function getChatContextLimitState(counts: ChatContextCounts): ChatContextLimitState {
+export function getChatContextLimitState(
+  counts: ChatContextCounts,
+  limits: ChromePromptLimits = DEFAULT_CHROME_PROMPT_LIMITS
+): ChatContextLimitState {
   return {
     exceedsPageContentLimit:
-      counts.pageContent !== null && counts.pageContent > CHROME_PAGE_CONTENT_CHAR_LIMIT,
+      counts.pageContent !== null && counts.pageContent > limits.pageContentLimit,
     exceedsSelectedTextLimit:
-      counts.selectedText !== null && counts.selectedText > CHROME_SELECTED_TEXT_CHAR_LIMIT,
+      counts.selectedText !== null && counts.selectedText > limits.selectedTextLimit,
   };
 }
 
