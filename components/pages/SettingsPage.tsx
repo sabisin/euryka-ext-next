@@ -1,7 +1,7 @@
 import { Monitor, Moon, Sun } from "lucide-react";
+import type { UserPrefs } from "../../lib/types";
 import { ChatApiKeySettings } from "../settings/ChatApiKeySettings";
 import { Button } from "../shared/Button";
-import type { UserPrefs } from "../../lib/types";
 
 interface SettingsPageProps {
   chatProviderEnabled: boolean;
@@ -83,10 +83,10 @@ export function SettingsPage({
               showFloatingButton: !current?.showFloatingButton,
             }))
           }
-          className={`inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors ${prefs?.showFloatingButton ? "bg-primary" : "bg-muted"}`}
+          className={`inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${prefs?.showFloatingButton ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border dark:bg-zinc-200 dark:ring-zinc-400"}`}
         >
           <span
-            className={`h-5 w-5 rounded-full bg-background shadow-sm ring-1 ring-border transition-transform ${prefs?.showFloatingButton ? "translate-x-4" : "translate-x-0"}`}
+            className={`h-5 w-5 rounded-full shadow-sm ring-1 transition-transform ${prefs?.showFloatingButton ? "translate-x-4 bg-background ring-border" : "translate-x-0 bg-white ring-black/10 dark:bg-zinc-500 dark:ring-zinc-600"}`}
           />
         </button>
       </div>
