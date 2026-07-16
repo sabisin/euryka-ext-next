@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { KeyRound, Save, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "../shared/Button";
 
 interface Props {
@@ -38,9 +38,9 @@ export function ChatApiKeySettings({ apiKey, onSave, onRemove }: Props) {
     <div className="flex flex-col gap-3 border-b border-border px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Chat API key</p>
+          <p className="text-sm font-medium text-foreground">Euryka API key</p>
           <p className="text-xs text-muted-foreground">
-            Stored locally in this browser extension.
+            Used for Chat and Contacts. Stored locally in this browser extension.
           </p>
         </div>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -70,18 +70,11 @@ export function ChatApiKeySettings({ apiKey, onSave, onRemove }: Props) {
         />
 
         {hasUnexpectedPrefix && (
-          <p className="text-xs text-muted-foreground">
-            Euryka API keys usually start with ek_.
-          </p>
+          <p className="text-xs text-muted-foreground">Euryka API keys usually start with ek_.</p>
         )}
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSave}
-            disabled={!trimmed}
-          >
+          <Button variant="primary" size="sm" onClick={handleSave} disabled={!trimmed}>
             <Save size={13} />
             {saved ? "Saved" : hasApiKey ? "Replace" : "Save"}
           </Button>

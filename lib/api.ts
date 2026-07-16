@@ -1,7 +1,7 @@
 import type {
   Brand,
-  CreateLinkedInContactResult,
   CreateLinkedInContactResponse,
+  CreateLinkedInContactResult,
   ImageAnalysisResult,
   Project,
   Session,
@@ -15,11 +15,7 @@ import type {
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
 
-async function request<T>(
-  path: string,
-  token: string,
-  options: RequestInit = {}
-): Promise<T> {
+async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -32,7 +28,27 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
-export async function fetchUser(token: string): Promise<{ workspaces: Workspace[] }> {
+export interface UserResponse {
+  workspaces: Workspace[];
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  avatar_url?: string;
+  picture?: string;
+  image?: string;
+  photoURL?: string;
+  photoUrl?: string;
+  photo_url?: string;
+  profilePhotoUrl?: string;
+  profile_photo_url?: string;
+  avatar?: string | { url?: string; src?: string };
+  profile?: Omit<UserResponse, "workspaces" | "user">;
+  metadata?: Omit<UserResponse, "workspaces" | "user">;
+  user_metadata?: Omit<UserResponse, "workspaces" | "user">;
+  user?: Omit<UserResponse, "workspaces" | "user">;
+}
+
+export async function fetchUser(token: string): Promise<UserResponse> {
   return request("/api/user", token);
 }
 
@@ -154,33 +170,30 @@ export async function uploadToGcs(signedUrl: string, file: File): Promise<void> 
 }
 
 export async function createLinkedInContact(
-  token: string,
-  wsId: string,
+  apiKey: string,
   payload: {
     linkedinUrl: string;
     brandId?: string;
-    projectId?: string;
     name?: string;
-  },
+  }
 ): Promise<CreateLinkedInContactResult> {
-  const body: Record<string, unknown> = { linkedinUrl: payload.linkedinUrl };
-  if (payload.brandId) body.brandId = payload.brandId;
-  if (payload.projectId) body.projectId = payload.projectId;
-  if (payload.name) body.name = payload.name;
+  const body = buildLinkedInContactRequestBody(payload);
 
-  const res = await fetch(`${BASE_URL}/api/ws/${encodeURIComponent(wsId)}/extension/sparks/linkedIn`, {
+  const res = await fetch(`${BASE_URL}/api/v1/contacts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      "x-api-key": apiKey,
     },
     body: JSON.stringify(body),
   });
 
   const responseText = await res.text().catch(() => "");
-  const responseBody = responseText ? parseJson<CreateLinkedInContactResponse>(responseText) : undefined;
+  const responseBody = responseText
+    ? parseJson<CreateLinkedInContactResponse>(responseText)
+    : undefined;
 
-  if (!res.ok || !responseBody?.url) {
+  if (!res.ok || !responseBody?.contactId) {
     return {
       ok: false,
       status: res.status,
@@ -191,8 +204,25 @@ export async function createLinkedInContact(
   return {
     ok: true,
     status: res.status,
-    contact: responseBody,
+    contact: {
+      ...responseBody,
+      url: payload.linkedinUrl,
+    },
   };
+}
+
+export function buildLinkedInContactRequestBody(payload: {
+  linkedinUrl: string;
+  brandId?: string;
+  name?: string;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    linkedinUrl: payload.linkedinUrl,
+    enrich: true,
+  };
+  if (payload.brandId) body.brandId = payload.brandId;
+  if (payload.name) body.name = payload.name;
+  return body;
 }
 
 function parseJson<T>(text: string): T | undefined {
@@ -209,10 +239,7 @@ export type WorkspaceData = {
   projects: Project[];
 };
 
-export async function fetchWorkspaceData(
-  token: string,
-  wsId: string
-): Promise<WorkspaceData> {
+export async function fetchWorkspaceData(token: string, wsId: string): Promise<WorkspaceData> {
   const [userRes, brandsRes, projectsRes] = await Promise.all([
     fetchUser(token),
     fetchBrands(token, wsId),

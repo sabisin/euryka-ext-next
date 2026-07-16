@@ -1,19 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Building2, ExternalLink, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { createLinkedInContact } from "../../lib/api";
-import { fetchAndStoreToken, getValidToken } from "../../lib/auth";
 import type { LinkedInProspectData, LinkedInRelatedPage, Spark } from "../../lib/types";
-import { IconWrapper } from "../shared/IconWrapper";
 import { Button } from "../shared/Button";
+import { IconWrapper } from "../shared/IconWrapper";
 
 interface Props {
   prospect: LinkedInProspectData;
   spark: Spark;
   sourceUrl: string | null;
   isLoading: boolean;
-  wsId: string | null;
+  apiKey: string;
   brandId?: string | null;
-  projectId?: string | null;
   onBack: () => void;
 }
 
@@ -33,9 +31,8 @@ export function ProspectorResult({
   spark,
   sourceUrl,
   isLoading,
-  wsId,
+  apiKey,
   brandId,
-  projectId,
   onBack,
 }: Props) {
   const [profiles, setProfiles] = useState<SubmitProfile[]>(() => normalizeProfiles(prospect));
@@ -49,7 +46,7 @@ export function ProspectorResult({
 
   const selectedProfiles = useMemo(
     () => profiles.filter((profile) => profile.selected),
-    [profiles],
+    [profiles]
   );
 
   const toggleProfile = (url: string) => {
@@ -58,46 +55,33 @@ export function ProspectorResult({
       current.map((profile) =>
         profile.url === url && !profile.isPrimary
           ? { ...profile, selected: !profile.selected }
-          : profile,
-      ),
+          : profile
+      )
     );
   };
 
   const handleSubmit = async () => {
-    if (!wsId || selectedProfiles.length === 0 || isSubmitting) return;
+    const contactsApiKey = apiKey.trim();
+    if (!contactsApiKey || selectedProfiles.length === 0 || isSubmitting) return;
 
     setIsSubmitting(true);
     setFeedback(null);
 
-    const stats = { created: 0, existing: 0, failed: 0, failedUrls: [] as string[] };
+    const stats = {
+      created: 0,
+      existing: 0,
+      failed: 0,
+      failedUrls: [] as string[],
+      errorText: "",
+    };
 
     try {
-      let token = await getValidToken();
-      if (!token) {
-        setFeedback({ kind: "error", message: "Authentication expired. Please sign in again.", failedUrls: [] });
-        return;
-      }
-
       for (const profile of dedupeProfiles(selectedProfiles)) {
-        let result = await createLinkedInContact(token, wsId, {
+        const result = await createLinkedInContact(contactsApiKey, {
           linkedinUrl: profile.url,
           brandId: brandId ?? undefined,
-          projectId: projectId ?? undefined,
           name: profile.name,
         });
-
-        if (!result.ok && result.status === 403) {
-          const refreshed = await fetchAndStoreToken();
-          if (refreshed) {
-            token = refreshed;
-            result = await createLinkedInContact(token, wsId, {
-              linkedinUrl: profile.url,
-              brandId: brandId ?? undefined,
-              projectId: projectId ?? undefined,
-              name: profile.name,
-            });
-          }
-        }
 
         if (result.ok) {
           if (result.contact.existing) stats.existing += 1;
@@ -105,6 +89,7 @@ export function ProspectorResult({
         } else {
           stats.failed += 1;
           stats.failedUrls.push(profile.url);
+          stats.errorText ||= getContactsApiError(result.status, result.errorText);
         }
       }
 
@@ -119,15 +104,13 @@ export function ProspectorResult({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
-        <Button
-          variant="icon"
-          size="icon-md"
-          onClick={onBack}
-          disabled={isLoading || isSubmitting}
-        >
+        <Button variant="icon" size="icon-md" onClick={onBack} disabled={isLoading || isSubmitting}>
           <ArrowLeft size={15} />
         </Button>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: spark.color }}>
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+          style={{ backgroundColor: spark.color }}
+        >
           <IconWrapper name={spark.icon} color="white" size={16} />
         </div>
         <span className="truncate text-sm font-medium text-foreground">{spark.title}</span>
@@ -153,7 +136,9 @@ export function ProspectorResult({
         ) : (
           <div className="flex flex-col gap-5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold text-foreground">{prospect.subjectName || "Prospects"}</h1>
+              <h1 className="text-xl font-semibold text-foreground">
+                {prospect.subjectName || "Prospects"}
+              </h1>
               <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
                 {toEntityLabel(prospect.entityType)}
               </span>
@@ -172,7 +157,9 @@ export function ProspectorResult({
                 <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Add other profiles in the page
                 </h2>
-                <span className="text-xs text-muted-foreground">{selectedProfiles.length} selected</span>
+                <span className="text-xs text-muted-foreground">
+                  {selectedProfiles.length} selected
+                </span>
               </div>
 
               {profiles.length > 0 ? (
@@ -194,8 +181,12 @@ export function ProspectorResult({
                             <EntityIcon size={16} />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{profile.name}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{profile.url}</span>
+                            <span className="block truncate text-sm font-medium">
+                              {profile.name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {profile.url}
+                            </span>
                           </span>
                         </button>
 
@@ -232,12 +223,16 @@ export function ProspectorResult({
       {!isLoading && (
         <div className="sticky bottom-0 border-t border-border bg-background px-4 py-3">
           {feedback && (
-            <div className={`mb-2 text-sm ${feedback.kind === "error" ? "text-red-600" : feedback.kind === "warning" ? "text-amber-600" : "text-green-600"}`}>
+            <div
+              className={`mb-2 text-sm ${feedback.kind === "error" ? "text-red-600" : feedback.kind === "warning" ? "text-amber-600" : "text-green-600"}`}
+            >
               <p>{feedback.message}</p>
               {feedback.failedUrls.length > 0 && (
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">
                   {feedback.failedUrls.map((url) => (
-                    <li key={url} className="break-all">{url}</li>
+                    <li key={url} className="break-all">
+                      {url}
+                    </li>
                   ))}
                 </ul>
               )}
@@ -247,10 +242,14 @@ export function ProspectorResult({
             variant="primary"
             size="md"
             onClick={handleSubmit}
-            disabled={!wsId || selectedProfiles.length === 0 || isSubmitting}
+            disabled={!apiKey.trim() || selectedProfiles.length === 0 || isSubmitting}
             className="w-full"
           >
-            {isSubmitting ? "Adding..." : "Add to prospects"}
+            {isSubmitting
+              ? "Adding..."
+              : apiKey.trim()
+                ? "Add to prospects"
+                : "Add an Euryka API key in Settings"}
           </Button>
         </div>
       )}
@@ -260,10 +259,7 @@ export function ProspectorResult({
 
 function normalizeProfiles(prospect: LinkedInProspectData): SubmitProfile[] {
   const profiles = new Map<string, SubmitProfile>();
-  if (
-    (prospect.entityType === "person" || prospect.entityType === "company") &&
-    prospect.pageUrl
-  ) {
+  if ((prospect.entityType === "person" || prospect.entityType === "company") && prospect.pageUrl) {
     const url = normalizeLinkedInUrl(prospect.pageUrl) ?? prospect.pageUrl;
     profiles.set(url, {
       entityType: prospect.entityType,
@@ -293,17 +289,42 @@ function dedupeProfiles(profiles: SubmitProfile[]): SubmitProfile[] {
   return Array.from(new Map(profiles.map((profile) => [profile.url, profile])).values());
 }
 
-function buildFeedback(stats: { created: number; existing: number; failed: number; failedUrls: string[] }): SubmitFeedback {
+function buildFeedback(stats: {
+  created: number;
+  existing: number;
+  failed: number;
+  failedUrls: string[];
+  errorText: string;
+}): SubmitFeedback {
   const successful = stats.created + stats.existing;
   const parts = [];
   if (stats.created) parts.push(`${stats.created} added`);
   if (stats.existing) parts.push(`${stats.existing} already existed`);
-  if (stats.failed) parts.push(successful ? `${stats.failed} failed` : `All ${stats.failed} failed`);
+  if (stats.failed)
+    parts.push(successful ? `${stats.failed} failed` : `All ${stats.failed} failed`);
   return {
     kind: stats.failed ? (successful ? "warning" : "error") : "success",
-    message: parts.join(", ") || "No profiles submitted.",
+    message: `${parts.join(", ") || "No profiles submitted."}${stats.errorText ? ` — ${stats.errorText}` : ""}`,
     failedUrls: stats.failedUrls,
   };
+}
+
+function getContactsApiError(status: number, errorText?: string): string {
+  if (errorText) {
+    try {
+      const parsed = JSON.parse(errorText) as {
+        message?: string;
+        details?: string;
+        error?: string;
+      };
+      const detail = parsed.details || parsed.message || parsed.error;
+      if (detail) return detail;
+    } catch {
+      return errorText.slice(0, 240);
+    }
+  }
+  if (status === 401) return "The configured Euryka API key is missing, invalid, or revoked.";
+  return `Contacts API request failed (${status}).`;
 }
 
 function cleanProfileName(value: string) {
