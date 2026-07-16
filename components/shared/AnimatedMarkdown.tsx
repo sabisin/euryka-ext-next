@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { repairMarkdownForDisplay } from "../../lib/markdown";
 
 interface Props {
   content: string;
@@ -11,6 +12,8 @@ export function AnimatedMarkdown({ content }: Props) {
     return <p className="text-sm text-muted-foreground">No content to display.</p>;
   }
 
+  const repairedContent = repairMarkdownForDisplay(content);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -18,7 +21,7 @@ export function AnimatedMarkdown({ content }: Props) {
       transition={{ duration: 0.5 }}
       className="prose prose-sm max-w-none text-foreground/80"
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{repairedContent}</ReactMarkdown>
     </motion.div>
   );
 }
