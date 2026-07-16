@@ -4,6 +4,8 @@ interface JwtPayload {
   exp?: number;
   name?: string;
   email?: string;
+  picture?: string;
+  avatar_url?: string;
   // Firebase / generic identity claims
   user_id?: string;
   [key: string]: unknown;
@@ -44,11 +46,14 @@ export async function fetchAndStoreToken(): Promise<string | null> {
     const expDate = payload.exp
       ? new Date(payload.exp * 1000).toISOString()
       : new Date(Date.now() + 3600_000).toISOString();
+    const current = await authStorage.getValue();
     await authStorage.setValue({
+      ...current,
       token,
       expDate,
-      name: payload.name,
-      email: payload.email,
+      name: payload.name ?? current.name,
+      email: payload.email ?? current.email,
+      avatarUrl: payload.picture ?? payload.avatar_url ?? current.avatarUrl,
     });
     return token;
   } catch {

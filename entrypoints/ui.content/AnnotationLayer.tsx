@@ -1,30 +1,26 @@
-import { Bold, Check, Italic, List, Loader2, Save, Strikethrough, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { firestoreTimestampToMs, type Annotation } from "../../lib/annotations-api";
-import {
-  captureAnnotationContextPoint,
-  type AnnotationContextPoint,
-} from "../../lib/annotation-anchors";
-import { onMessage, sendMessage } from "../../lib/messaging";
-import { DEBUG, debugLog } from "../../lib/debug";
-import type { UserPrefs } from "../../lib/types";
-import { identityColor, identityInitial } from "../../lib/utils";
+import { X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import logo from "../../assets/ek-icon-new.svg";
+import { AnnotationAvatar } from "../../components/annotations/AnnotationAvatar";
+import { MarkdownAnnotationEditor } from "../../components/annotations/MarkdownAnnotationEditor";
 import { Button } from "../../components/shared/Button";
 import { useAnnotationAnchors } from "../../hooks/use-annotation-anchors";
 import { useAnnotationMarkerPositioning } from "../../hooks/use-annotation-marker-positioning";
-import logo from "../../assets/ek-alt-blue.svg";
+import {
+  type AnnotationContextPoint,
+  captureAnnotationContextPoint,
+} from "../../lib/annotation-anchors";
+import { type Annotation, firestoreTimestampToMs } from "../../lib/annotations-api";
+import { DEBUG, debugLog } from "../../lib/debug";
+import { onMessage, sendMessage } from "../../lib/messaging";
+import type { UserIdentity, UserPrefs } from "../../lib/types";
+import { identityColor } from "../../lib/utils";
 
 type ResolvedTheme = "dark" | "light";
 
 const MARKER_SIZE = 32;
 const COMPOSER_WIDTH = 320;
 const COMPOSER_MARKER_GAP = 4;
-const FORMAT_ACTIONS = [
-  { icon: <Bold size={13} />, title: "Bold", prefix: "**", suffix: "**" },
-  { icon: <Italic size={13} />, title: "Italic", prefix: "_", suffix: "_" },
-  { icon: <Strikethrough size={13} />, title: "Strikethrough", prefix: "~~", suffix: "~~" },
-  { icon: <List size={13} />, title: "Bullet list", prefix: "\n- ", suffix: "" },
-] as const;
 const ANNOTATION_UPDATED_EVENT = "annotationUpdated";
 const ANNOTATION_DELETED_EVENT = "annotationDeleted";
 const TOGGLE_ANNOTATIONS_SHORTCUT = "a";
@@ -54,7 +50,10 @@ function isToggleAnnotationsShortcut(event: KeyboardEvent) {
 export function AnnotationLayer() {
   const [hidden, setHidden] = useState(false);
   const [theme, setTheme] = useState<ResolvedTheme>("dark");
-  const [myIdentity, setMyIdentity] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserIdentity>({
+    label: null,
+    avatarUrl: null,
+  });
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [targetUrl, setTargetUrl] = useState(getCurrentTargetUrl);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
@@ -64,14 +63,10 @@ export function AnnotationLayer() {
   const lastContextMenuPoint = useRef<AnnotationContextPoint | null>(null);
   const activeAnnotationIdRef = useRef<string | null>(null);
   const refreshInFlightRef = useRef(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { anchors, visibility: anchorVisibility } = useAnnotationAnchors(
-    annotations,
-    targetUrl
-  );
+  const { anchors, visibility: anchorVisibility } = useAnnotationAnchors(annotations, targetUrl);
   const setMarkerElement = useAnnotationMarkerPositioning(annotations, anchors);
 
-  const refreshAnnotations = async () => {
+  const refreshAnnotations = useCallback(async () => {
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     const targetUrl = getCurrentTargetUrl();
@@ -112,7 +107,7 @@ export function AnnotationLayer() {
     } finally {
       refreshInFlightRef.current = false;
     }
-  };
+  }, []);
 
   useEffect(() => {
     debugAnnotations("Annotation layer mounted", {
@@ -171,9 +166,9 @@ export function AnnotationLayer() {
 
     const refreshIdentity = async () => {
       try {
-        const identity = await sendMessage("getCurrentIdentity", undefined);
+        const identity = await sendMessage("getCurrentUser", undefined);
         if (!cancelled) {
-          setMyIdentity((current) => (current === identity ? current : identity));
+          setCurrentUser(identity);
         }
       } catch (error) {
         debugAnnotations("Failed to load current identity", error);
@@ -280,7 +275,7 @@ export function AnnotationLayer() {
       window.removeEventListener("popstate", handleUrlChange);
       window.removeEventListener("hashchange", handleUrlChange);
     };
-  }, []);
+  }, [refreshAnnotations]);
 
   useEffect(() => {
     const captureContextMenuPoint = (event: MouseEvent) => {
@@ -300,7 +295,7 @@ export function AnnotationLayer() {
     const cleanup = onMessage("createAnnotationMarker", async () => {
       try {
         const point = lastContextMenuPoint.current ?? getViewportCenterPoint();
-        const createdBy = (await sendMessage("getCurrentIdentity", undefined)) ?? undefined;
+        const createdBy = (await sendMessage("getCurrentUser", undefined)).label ?? undefined;
         const color = createdBy ? identityColor(createdBy) : "#18181b";
         const response = await sendMessage("createAnnotation", {
           targetUrl: getCurrentTargetUrl(),
@@ -354,30 +349,14 @@ export function AnnotationLayer() {
     }
   };
 
-  const applyFormat = (prefix: string, suffix: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = noteDraft.slice(start, end);
-    const nextDraft = noteDraft.slice(0, start) + prefix + selected + suffix + noteDraft.slice(end);
-    setNoteDraft(nextDraft);
-
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(start + prefix.length, end + prefix.length);
-    });
-  };
-
-  const saveNote = async (annotation: Annotation) => {
+  const saveNote = async (annotation: Annotation, markdown = noteDraft) => {
     if (savingId === annotation.id) return;
     setSavingId(annotation.id);
     setSavedId(null);
     try {
       const response = await sendMessage("updateAnnotation", {
         id: annotation.id,
-        payload: { note: noteDraft.trim() || null },
+        payload: { note: markdown.trim() || null },
       });
       setAnnotations((current) =>
         current.map((item) => (item.id === annotation.id ? response.annotation : item))
@@ -411,33 +390,15 @@ export function AnnotationLayer() {
       {annotations.map((annotation) => {
         if (anchorVisibility.get(annotation.id) === false) return null;
         const isActive = annotation.id === activeAnnotationId;
-        const isSaving = savingId === annotation.id;
         const isSaved = savedId === annotation.id;
         const markerNumber = markerNumbers.get(annotation.id);
-        const markerColor = annotation.color ?? identityColor(annotation.createdBy);
-        const initial = identityInitial(myIdentity ?? annotation.createdBy);
-        const composerName = myIdentity || "Annotation";
-        const isDark = theme === "dark";
-        const composerClassName = isDark
-          ? "border-zinc-700 bg-zinc-950 text-zinc-100 shadow-2xl"
-          : "border-zinc-200 bg-white text-zinc-950 shadow-2xl";
-        const headerClassName = isDark ? "border-zinc-800" : "border-zinc-200";
-        const textareaClassName = isDark
-          ? "text-zinc-100 placeholder:text-zinc-500"
-          : "text-zinc-950 placeholder:text-slate-400";
-        const footerClassName = isDark
-          ? "border-zinc-800 bg-zinc-950"
-          : "border-zinc-200 bg-slate-50";
-        const toolButtonClassName = isDark
-          ? "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-          : "text-slate-600 hover:bg-slate-200 hover:text-slate-950";
-
+        const composerName = currentUser.label || annotation.createdBy || "Annotation";
         return (
           <div
             key={annotation.id}
             ref={setMarkerElement}
             data-annotation-id={annotation.id}
-            className={`fixed ${isActive ? "z-[101]" : "z-[100]"}`}
+            className={`group fixed ${isActive ? "z-[101]" : "z-[100]"}`}
             style={{
               left: 0,
               top: 0,
@@ -454,13 +415,8 @@ export function AnnotationLayer() {
               className="flex h-[32px] w-[32px] cursor-pointer select-none items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
               style={{ backgroundColor: "#18181b" }}
             >
-              <img
-                src={logo}
-                alt=""
-                draggable={false}
-                className="h-[18px] w-[18px] translate-x-0.5"
-              />
-              {markerNumber != null && (
+              <img src={logo} alt="" draggable={false} className="h-[18px] w-[18px]" />
+              {annotations.length > 1 && markerNumber != null && (
                 <span
                   className="absolute -bottom-[4px] -right-[4px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full border-[1.5px] border-white px-[4px] text-[9px] font-bold leading-none text-white shadow"
                   style={{ backgroundColor: "#18181b" }}
@@ -474,7 +430,7 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Remove annotation"
               onClick={() => removeAnnotation(annotation)}
-              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 p-0 leading-none text-zinc-950 shadow hover:bg-white"
+              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 p-0 leading-none text-zinc-950 opacity-0 shadow transition-opacity hover:bg-white focus-visible:opacity-100 group-hover:opacity-100"
               style={{ backgroundColor: "#f4f4f5" }}
             >
               <X size={11} className="block h-[11px] w-[11px] shrink-0" />
@@ -483,7 +439,8 @@ export function AnnotationLayer() {
             {isActive && (
               <div
                 data-annotation-composer
-                className={`absolute overflow-hidden rounded-xl border ${composerClassName}`}
+                data-theme={theme}
+                className="absolute overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-2xl"
                 style={{
                   left: `${MARKER_SIZE + COMPOSER_MARKER_GAP}px`,
                   top: 0,
@@ -495,81 +452,30 @@ export function AnnotationLayer() {
                   size="icon-md"
                   onClick={() => setActiveAnnotationId(null)}
                   title="Close"
-                  className={`absolute right-3 top-3 z-10 rounded-full ${
-                    isDark
-                      ? "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-950"
-                  }`}
+                  className="absolute right-3 top-3 z-10 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 >
                   <X size={17} />
                 </Button>
                 <div>
-                  <div className={`flex items-center gap-3 border-b px-4 py-3 ${headerClassName}`}>
-                    <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-                      style={{ backgroundColor: markerColor }}
-                    >
-                      {initial}
-                    </div>
+                  <div className="flex items-center gap-3 border-b border-border bg-background px-4 py-3">
+                    <AnnotationAvatar avatarUrl={currentUser.avatarUrl} label={composerName} />
                     <div className="min-w-0 pr-8">
                       <p className="truncate text-sm font-semibold leading-tight">{composerName}</p>
                     </div>
                   </div>
 
-                  <textarea
-                    ref={textareaRef}
+                  <MarkdownAnnotationEditor
+                    compact
                     autoFocus
-                    value={noteDraft}
-                    onChange={(event) => {
-                      setNoteDraft(event.target.value);
+                    content={noteDraft}
+                    saved={isSaved}
+                    onChange={(markdown) => {
+                      setNoteDraft(markdown);
                       setSavedId(null);
                     }}
-                    placeholder="What's new?"
-                    className={`ek-scroll min-h-28 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-relaxed outline-none ${textareaClassName}`}
+                    onSave={(markdown) => saveNote(annotation, markdown)}
+                    onDelete={() => removeAnnotation(annotation)}
                   />
-
-                  <div
-                    className={`flex items-center justify-between border-t px-3 py-2.5 ${footerClassName}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      {FORMAT_ACTIONS.map((action) => (
-                        <Button
-                          key={action.title}
-                          variant="icon"
-                          size="icon-lg"
-                          title={action.title}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            applyFormat(action.prefix, action.suffix);
-                          }}
-                          className={`h-8 w-8 ${toolButtonClassName}`}
-                        >
-                          {action.icon}
-                        </Button>
-                      ))}
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="md"
-                      onClick={() => saveNote(annotation)}
-                      disabled={isSaving}
-                      title={isSaving ? "Saving" : isSaved ? "Saved" : "Save"}
-                      className={
-                        isSaved
-                          ? "!bg-green-600 !text-white hover:!bg-green-600 active:!bg-green-700"
-                          : undefined
-                      }
-                    >
-                      {isSaving ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : isSaved ? (
-                        <Check size={14} />
-                      ) : (
-                        <Save size={14} />
-                      )}
-                      {isSaving ? "Saving" : isSaved ? "Saved" : "Save"}
-                    </Button>
-                  </div>
                 </div>
               </div>
             )}

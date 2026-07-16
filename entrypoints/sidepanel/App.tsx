@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { AnnotationHeaderTitle } from "../../components/annotations/AnnotationView";
 import { SessionHeaderTitle } from "../../components/history/SessionView";
@@ -24,6 +25,7 @@ import { useStorageItem } from "../../hooks/use-storage-item";
 import { useTabContext } from "../../hooks/use-tab-context";
 import { ThemeProvider } from "../../hooks/use-theme";
 import { useWorkspaceData } from "../../hooks/use-workspace";
+import { fetchAndStoreToken } from "../../lib/auth";
 import {
   SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS,
   getChatContextLimitState,
@@ -54,6 +56,7 @@ const THIS_TAB_ID = (() => {
 
 function SidePanel() {
   const [auth] = useStorageItem<AuthState>(authStorage);
+  const [authResolved, setAuthResolved] = useState(false);
   const [chatApiKey, setChatApiKey] = useStorageItem<string>(chatApiKeyStorage);
   const [prefs, setPrefs] = useStorageItem<UserPrefs>(userPrefs);
   const { currentTabUrl, prospectorStatus } = useTabContext(THIS_TAB_ID);
@@ -155,11 +158,43 @@ function SidePanel() {
     setSelectedCollectionItemId,
   } = actions;
 
-  const isLoggedIn = !!auth?.token;
+  useEffect(() => {
+    let cancelled = false;
+    let validating = false;
+
+    const validateSession = async () => {
+      if (validating) return;
+      validating = true;
+      try {
+        const token = await fetchAndStoreToken();
+        if (token) {
+          await queryClient.invalidateQueries({ queryKey: ["workspace"] });
+        }
+      } finally {
+        validating = false;
+        if (!cancelled) setAuthResolved(true);
+      }
+    };
+
+    const validateWhenVisible = () => {
+      if (document.visibilityState === "visible") void validateSession();
+    };
+
+    void validateSession();
+    window.addEventListener("focus", validateWhenVisible);
+    document.addEventListener("visibilitychange", validateWhenVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", validateWhenVisible);
+      document.removeEventListener("visibilitychange", validateWhenVisible);
+    };
+  }, []);
+
+  const isLoggedIn = authResolved && !!auth?.token;
   const hasChatApiKey = Boolean(chatApiKey?.trim());
   const chatApiKeyPromptAvailable = ENABLE_EURYKA_CHAT_PROVIDER && hasChatApiKey;
   // Workspace data
-  const { data: wsData } = useWorkspaceData(selectedWorkspaceId);
+  const { data: wsData } = useWorkspaceData(selectedWorkspaceId, isLoggedIn);
   const workspaces = wsData?.workspaces ?? [];
   const brands = wsData?.brands ?? [];
   const projects = wsData?.projects ?? [];
@@ -230,6 +265,13 @@ function SidePanel() {
     handleUseSpark,
     handleAnalyseImage,
   });
+  if (!authResolved) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Checking session...
+      </div>
+    );
+  }
   if (!isLoggedIn) return <LoggedOut />;
 
   const isChatResultView = currentPage === "sparks" && !selectedImageUrl && showChatResult;
@@ -408,7 +450,6 @@ function SidePanel() {
               isLoadingSpark={isLoadingSpark}
               galleryProps={{
                 lastFive: prefs?.lastFive ?? [],
-                currentUrl: currentTabUrl,
                 chatApiKeyAvailable: !ENABLE_EURYKA_CHAT_PROVIDER || chatApiKeyPromptAvailable,
                 chatMode,
                 includePageContent: includeChatPageContent,

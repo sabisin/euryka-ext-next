@@ -4,12 +4,13 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Check,
   ChevronDown,
-  ExternalLink,
+  CircleHelp,
   // Folder,
   History,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  ReceiptText,
   Settings,
   Zap,
 } from "lucide-react";
@@ -88,8 +89,7 @@ export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps
         ))}
       </nav>
 
-      {/* Settings pinned to bottom */}
-      <div className="flex h-[53px] shrink-0 flex-col items-center justify-center border-t border-border">
+      <div className="flex shrink-0 flex-col items-center gap-1 border-t border-border py-2">
         <Button
           variant={currentPage === "settings" ? "secondary" : "icon"}
           size="icon-lg"
@@ -97,6 +97,24 @@ export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps
           onClick={() => onNavigate("settings")}
         >
           <Settings size={16} />
+        </Button>
+        <Button
+          variant="icon"
+          size="icon-lg"
+          title="Billing"
+          aria-label="Billing"
+          onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
+        >
+          <ReceiptText size={16} />
+        </Button>
+        <Button
+          variant="icon"
+          size="icon-lg"
+          title="Help"
+          aria-label="Help"
+          onClick={() => chrome.tabs.create({ url: "https://euryka.ai/help/" })}
+        >
+          <CircleHelp size={16} />
         </Button>
       </div>
     </div>
@@ -119,15 +137,6 @@ export function AppSidebar({
   const panelTransition = shouldReduceMotion
     ? { duration: 0 }
     : { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] as const };
-
-  const allNavItems = [
-    ...NAV_ITEMS,
-    {
-      key: "settings" as PageKey,
-      label: "Settings",
-      icon: <Settings size={16} />,
-    },
-  ];
 
   return (
     <AnimatePresence initial={false}>
@@ -192,7 +201,7 @@ export function AppSidebar({
 
               {/* Nav with labels */}
               <nav className="flex-1 space-y-0.5 px-2 py-2">
-                {allNavItems.map(({ key, label, icon }) => (
+                {NAV_ITEMS.map(({ key, label, icon }) => (
                   <Button
                     key={key}
                     variant={currentPage === key ? "secondary" : "ghost"}
@@ -212,12 +221,24 @@ export function AppSidebar({
               {/* Footer links */}
               <div className="space-y-0.5 border-t border-border px-2 pb-3 pt-2">
                 <Button
+                  variant={currentPage === "settings" ? "secondary" : "ghost"}
+                  size="md"
+                  onClick={() => {
+                    onNavigate("settings");
+                    if (!docked) onClose();
+                  }}
+                  className="w-full justify-start"
+                >
+                  <Settings size={16} />
+                  Settings
+                </Button>
+                <Button
                   variant="ghost"
                   size="md"
                   onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
                   className="w-full justify-start"
                 >
-                  <ExternalLink size={14} />
+                  <ReceiptText size={16} />
                   Billing
                 </Button>
                 <Button
@@ -226,7 +247,7 @@ export function AppSidebar({
                   onClick={() => chrome.tabs.create({ url: "https://euryka.ai/help/" })}
                   className="w-full justify-start"
                 >
-                  <ExternalLink size={14} />
+                  <CircleHelp size={16} />
                   Help
                 </Button>
               </div>
@@ -244,11 +265,7 @@ interface WorkspaceDropdownProps {
   onSelect: (id: string) => void;
 }
 
-function WorkspaceDropdown({
-  workspaces,
-  selectedId,
-  onSelect,
-}: WorkspaceDropdownProps) {
+function WorkspaceDropdown({ workspaces, selectedId, onSelect }: WorkspaceDropdownProps) {
   const [open, setOpen] = useState(false);
   const selected = workspaces.find((w) => w.id === selectedId);
 
@@ -258,9 +275,9 @@ function WorkspaceDropdown({
         variant="outline"
         size="sm"
         onClick={() => setOpen((o) => !o)}
-        className="w-full justify-between bg-muted/60 hover:bg-muted"
+        className="w-full justify-between bg-muted/60 px-3 hover:bg-muted"
       >
-        <span className="truncate">
+        <span className="min-w-0 flex-1 truncate text-left">
           {selected?.name ?? "Select workspace…"}
         </span>
         <ChevronDown
@@ -289,14 +306,11 @@ function WorkspaceDropdown({
                     onSelect(ws.id);
                     setOpen(false);
                   }}
-                  className={`w-full justify-start text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
+                  className={`w-full justify-start rounded-none px-3 text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
                 >
                   <span className="min-w-0 flex-1 truncate text-left">{ws.name}</span>
                   {isSelected && (
-                    <Check
-                      size={12}
-                      className="ml-auto shrink-0 text-muted-foreground"
-                    />
+                    <Check size={12} className="ml-auto shrink-0 text-muted-foreground" />
                   )}
                 </Button>
               );

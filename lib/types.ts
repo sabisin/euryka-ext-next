@@ -3,6 +3,12 @@ export interface AuthState {
   expDate: string;
   name?: string;
   email?: string;
+  avatarUrl?: string;
+}
+
+export interface UserIdentity {
+  label: string | null;
+  avatarUrl: string | null;
 }
 
 export interface UserPrefs {
@@ -183,11 +189,23 @@ export type MessageChunk =
   | { type: "tool-input-start"; toolCallId: string; toolName: string }
   | { type: "tool-input-delta"; toolCallId: string; inputTextDelta: string }
   | { type: "tool-input-available"; toolCallId: string; toolName: string; input: unknown }
-  | { type: "tool-input-error"; toolCallId: string; toolName: string; input: unknown; errorText: string }
+  | {
+      type: "tool-input-error";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      errorText: string;
+    }
   | { type: "tool-output-available"; toolCallId: string; output: unknown; preliminary?: boolean }
   | { type: "tool-output-error"; toolCallId: string; errorText: string }
   | { type: "source-url"; sourceId: string; url: string; title?: string }
-  | { type: "source-document"; sourceId: string; mediaType: string; title: string; filename?: string }
+  | {
+      type: "source-document";
+      sourceId: string;
+      mediaType: string;
+      title: string;
+      filename?: string;
+    }
   | { type: "file"; url: string; mediaType: string };
 
 export interface ChatSource {

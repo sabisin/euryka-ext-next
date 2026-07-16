@@ -29,7 +29,14 @@ const pendingActions = new Map<
   number,
   | { type: "analyseImage"; imageUrl: string; pageUrl?: string }
   | { type: "triggerSpark"; sparkId: string }
-  | { type: "saveToCollection"; itemType: string; title: string; content: string; thumbnail?: string; sourceUrl: string }
+  | {
+      type: "saveToCollection";
+      itemType: string;
+      title: string;
+      content: string;
+      thumbnail?: string;
+      sourceUrl: string;
+    }
 >();
 
 // Per-tab path that injects tabId into the panel page so it can identify itself.
@@ -69,8 +76,7 @@ async function configureInternalThreadRedirect() {
           },
         },
         condition: {
-          regexFilter:
-            "^https?://0\\.0\\.0\\.0(:[0-9]+)?(/ws/[^/]+/threads/[^/?#]+.*)$",
+          regexFilter: "^https?://0\\.0\\.0\\.0(:[0-9]+)?(/ws/[^/]+/threads/[^/?#]+.*)$",
           resourceTypes: ["main_frame"],
         },
       },
@@ -171,7 +177,9 @@ export default defineBackground(() => {
     // extension contexts including side panels). Sending WITH tabId uses chrome.tabs.sendMessage
     // which only reaches content scripts — so we always broadcast and filter by forTabId in panel.
     if (openSidePanelTabs.has(tabId)) {
-      sendMessage("analyseImage", { imageUrl, pageUrl: info.pageUrl, forTabId: tabId }).catch(() => {});
+      sendMessage("analyseImage", { imageUrl, pageUrl: info.pageUrl, forTabId: tabId }).catch(
+        () => {}
+      );
     } else {
       pendingActions.set(tabId, { type: "analyseImage", imageUrl, pageUrl: info.pageUrl });
     }
@@ -247,7 +255,7 @@ export default defineBackground(() => {
   });
 
   onMessage("listAnnotations", ({ data }) =>
-    runWithTokenRetry((token) => listAnnotations(token, data)),
+    runWithTokenRetry((token) => listAnnotations(token, data))
   );
 
   onMessage("createAnnotation", ({ data }) =>
@@ -255,7 +263,7 @@ export default defineBackground(() => {
       const response = await createAnnotation(token, data);
       sendMessage("annotationUpdated", response).catch(() => {});
       return response;
-    }),
+    })
   );
 
   onMessage("updateAnnotation", ({ data }) =>
@@ -263,7 +271,7 @@ export default defineBackground(() => {
       const response = await updateAnnotation(token, data.id, data.payload);
       sendMessage("annotationUpdated", response).catch(() => {});
       return response;
-    }),
+    })
   );
 
   onMessage("deleteAnnotation", async ({ data }) => {
@@ -281,6 +289,13 @@ export default defineBackground(() => {
   });
 
   onMessage("getCurrentIdentity", () => currentIdentityStorage.getValue());
+  onMessage("getCurrentUser", async () => {
+    const auth = await authStorage.getValue();
+    return {
+      label: auth.email ?? auth.name ?? null,
+      avatarUrl: auth.avatarUrl ?? null,
+    };
+  });
 
   // The floating button broadcasts openSidePanel. This same message is also
   // received by the side panel itself (if open), which will self-close. This
@@ -303,10 +318,14 @@ export default defineBackground(() => {
     pendingActions.delete(tabId);
 
     if (pending.type === "analyseImage") {
-      await sendMessage("analyseImage", { imageUrl: pending.imageUrl, pageUrl: pending.pageUrl, forTabId: tabId });
+      await sendMessage("analyseImage", {
+        imageUrl: pending.imageUrl,
+        pageUrl: pending.pageUrl,
+        forTabId: tabId,
+      });
     } else if (pending.type === "triggerSpark") {
       await sendMessage("triggerSpark", { sparkId: pending.sparkId, forTabId: tabId });
-  } else if (pending.type === "saveToCollection") {
+    } else if (pending.type === "saveToCollection") {
       logCollectionSave("Flushing queued save action to sidepanel", { tabId, pending });
       await sendMessage("saveToCollection", {
         type: pending.itemType as import("../lib/types").CollectionItemType,

@@ -1,4 +1,11 @@
-import type { AuthState, Collection, CollectionItem, Collaborator, SparkCache, UserPrefs } from "./types";
+import type {
+  AuthState,
+  Collection,
+  CollectionItem,
+  Collaborator,
+  SparkCache,
+  UserPrefs,
+} from "./types";
 import {
   createSupabaseCollectionItemsStorage,
   createSupabaseCollectionsStorage,
@@ -42,14 +49,13 @@ export const selectedTextSelectorStorage = storage.defineItem<string>(
   { defaultValue: "" }
 );
 
-export const collaboratorsStorage = storage.defineItem<Collaborator[]>(
-  "local:collaborators",
-  { defaultValue: [] },
-);
+export const collaboratorsStorage = storage.defineItem<Collaborator[]>("local:collaborators", {
+  defaultValue: [],
+});
 
 export const collectionEmojiHistoryStorage = storage.defineItem<string[]>(
   "local:collectionEmojiHistory",
-  { defaultValue: [] },
+  { defaultValue: [] }
 );
 
 const localCollectionsStorage = storage.defineItem<Collection[]>("local:collections", {
@@ -62,18 +68,17 @@ const localCollectionItemsStorage = storage.defineItem<CollectionItem[]>("local:
 
 export const collectionsStorage = createSupabaseCollectionsStorage(
   localCollectionsStorage,
-  authStorage,
+  authStorage
 );
 
 export const collectionItemsStorage = createSupabaseCollectionItemsStorage(
   localCollectionItemsStorage,
-  authStorage,
+  authStorage
 );
 
 // Written by the side panel whenever auth resolves.
 // The content script reads this instead of authStorage directly,
 // so there's always one reliable source of "who am I".
-export const currentIdentityStorage = storage.defineItem<string | null>(
-  "local:currentIdentity",
-  { defaultValue: null },
-);
+export const currentIdentityStorage = storage.defineItem<string | null>("local:currentIdentity", {
+  defaultValue: null,
+});

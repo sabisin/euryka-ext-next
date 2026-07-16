@@ -4,16 +4,16 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import {
+  type Annotation,
   firestoreTimestampToMs,
   listAnnotations,
-  type Annotation,
 } from "../../lib/annotations-api";
 import { runWithTokenRetry } from "../../lib/auth";
 import { sendMessage } from "../../lib/messaging";
-import { pageUrlStorage, userPrefs } from "../../lib/storage";
-import type { UserPrefs } from "../../lib/types";
+import { authStorage, pageUrlStorage, userPrefs } from "../../lib/storage";
+import type { AuthState, UserPrefs } from "../../lib/types";
 import { Button } from "../shared/Button";
-import logo from "../../assets/ek-alt-blue.svg";
+import { AnnotationAvatar } from "./AnnotationAvatar";
 
 interface Props {
   onSelectMarker: (id: string) => void;
@@ -48,7 +48,7 @@ function buildAnnotationNumbers(annotations: Annotation[]): Map<string, number> 
   const byUrl = new Map<string, Annotation[]>();
   for (const annotation of annotations) {
     if (!byUrl.has(annotation.targetUrl)) byUrl.set(annotation.targetUrl, []);
-    byUrl.get(annotation.targetUrl)!.push(annotation);
+    byUrl.get(annotation.targetUrl)?.push(annotation);
   }
 
   const result = new Map<string, number>();
@@ -62,6 +62,7 @@ function buildAnnotationNumbers(annotations: Annotation[]): Map<string, number> 
 
 export function AnnotationsList({ onSelectMarker }: Props) {
   const [storedPageUrl] = useStorageItem(pageUrlStorage);
+  const [auth] = useStorageItem<AuthState>(authStorage);
   const [prefs, setPrefs] = useStorageItem(userPrefs);
   const typedPrefs = prefs as UserPrefs | undefined;
   const [tab, setTab] = useState<Tab>(typedPrefs?.annotationsTab ?? "current");
@@ -165,12 +166,19 @@ export function AnnotationsList({ onSelectMarker }: Props) {
   );
 
   const annotationNumbers = useMemo(() => buildAnnotationNumbers(annotations), [annotations]);
+  const annotationCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const annotation of annotations) {
+      counts.set(annotation.targetUrl, (counts.get(annotation.targetUrl) ?? 0) + 1);
+    }
+    return counts;
+  }, [annotations]);
 
   const allGroups = useMemo<AnnotationGroup[]>(() => {
     const byUrl = new Map<string, Annotation[]>();
     for (const annotation of filteredAnnotations) {
       if (!byUrl.has(annotation.targetUrl)) byUrl.set(annotation.targetUrl, []);
-      byUrl.get(annotation.targetUrl)!.push(annotation);
+      byUrl.get(annotation.targetUrl)?.push(annotation);
     }
     return Array.from(byUrl.entries())
       .map(([url, groupAnnotations]) => ({ url, annotations: groupAnnotations }))
@@ -196,7 +204,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
   const selectTab = (nextTab: Tab) => {
     setTab(nextTab);
     void setPrefs((current) => ({
-      ...current!,
+      ...current,
       annotationsTab: nextTab,
     }));
   };
@@ -233,8 +241,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
           aria-label={hidden ? "Show annotations on page" : "Hide annotations on page"}
           onClick={() =>
             setPrefs((current) => {
-              const currentPrefs = current as UserPrefs | undefined;
-              return { ...currentPrefs!, annotationsHidden: !currentPrefs?.annotationsHidden };
+              return { ...current, annotationsHidden: !current.annotationsHidden };
             })
           }
           className={hidden ? "text-muted-foreground/40 hover:text-muted-foreground" : undefined}
@@ -289,6 +296,8 @@ export function AnnotationsList({ onSelectMarker }: Props) {
             <AnnotationListItems
               annotations={filteredAnnotations}
               annotationNumbers={annotationNumbers}
+              annotationCounts={annotationCounts}
+              avatarUrl={auth?.avatarUrl}
               onSelectAnnotation={onSelectMarker}
               onDeleteAnnotation={deleteItem}
             />
@@ -309,6 +318,8 @@ export function AnnotationsList({ onSelectMarker }: Props) {
                 <AnnotationListItems
                   annotations={group.annotations}
                   annotationNumbers={annotationNumbers}
+                  annotationCounts={annotationCounts}
+                  avatarUrl={auth?.avatarUrl}
                   onSelectAnnotation={onSelectMarker}
                   onDeleteAnnotation={deleteItem}
                 />
@@ -345,9 +356,9 @@ function EmptyState({ message, hint }: { message: string; hint: string }) {
 function AnnotationsLoadingState() {
   return (
     <div className="flex flex-col gap-2">
-      {[72, 82, 76, 88, 70].map((width, index) => (
+      {[72, 82, 76, 88, 70].map((width) => (
         <div
-          key={width + index}
+          key={width}
           className="flex items-start gap-3 rounded-md border border-border bg-card/70 px-3 py-2.5"
         >
           <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-full bg-muted" />
@@ -364,11 +375,15 @@ function AnnotationsLoadingState() {
 function AnnotationListItems({
   annotations,
   annotationNumbers,
+  annotationCounts,
+  avatarUrl,
   onSelectAnnotation,
   onDeleteAnnotation,
 }: {
   annotations: Annotation[];
   annotationNumbers: Map<string, number>;
+  annotationCounts: Map<string, number>;
+  avatarUrl?: string | null;
   onSelectAnnotation: (id: string) => void;
   onDeleteAnnotation: (annotation: Annotation) => void;
 }) {
@@ -376,6 +391,7 @@ function AnnotationListItems({
     <div className="flex flex-col gap-px">
       {annotations.map((annotation) => {
         const markerNumber = annotationNumbers.get(annotation.id);
+        const annotationCount = annotationCounts.get(annotation.targetUrl) ?? 0;
         const metaParts = [
           annotation.selectedText ? `"${annotation.selectedText}"` : null,
           formatDate(annotation),
@@ -386,55 +402,55 @@ function AnnotationListItems({
         return (
           <div
             key={annotation.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => onSelectAnnotation(annotation.id)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              onSelectAnnotation(annotation.id);
-            }}
-            className="group flex h-[58px] w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 text-left transition-all hover:border-border/60 hover:bg-card active:scale-[0.99] active:bg-muted/60"
+            className="group flex h-[58px] w-full items-center rounded-lg border border-transparent text-left transition-all hover:border-border/60 hover:bg-card"
           >
-            <span
-              className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-[11px] font-bold text-white"
-              title={annotation.createdBy}
+            <button
+              type="button"
+              onClick={() => onSelectAnnotation(annotation.id)}
+              className="flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-lg px-3 text-left active:scale-[0.99] active:bg-muted/60"
             >
-              <img src={logo} alt="" draggable={false} className="h-3.5 w-3.5" />
-              {markerNumber != null && (
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-card bg-zinc-950 px-0.5 text-[8px] font-bold leading-none text-white">
-                  {markerNumber}
-                </span>
-              )}
-            </span>
-
-            <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
-              <div
-                className={`truncate text-sm leading-tight ${annotation.note?.trim() ? "text-foreground/85" : "italic text-muted-foreground/50"}`}
-              >
-                {annotation.note?.trim() ? (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({ children }) => <span>{children}</span>,
-                      h1: ({ children }) => <span className="font-semibold">{children} </span>,
-                      h2: ({ children }) => <span className="font-semibold">{children} </span>,
-                      h3: ({ children }) => <span className="font-semibold">{children} </span>,
-                      ul: ({ children }) => <span>{children}</span>,
-                      ol: ({ children }) => <span>{children}</span>,
-                      li: ({ children }) => <span>{children} </span>,
-                    }}
-                  >
-                    {annotation.note}
-                  </ReactMarkdown>
-                ) : (
-                  "No note - click to add one"
+              <span className="relative shrink-0">
+                <AnnotationAvatar
+                  avatarUrl={avatarUrl}
+                  label={annotation.createdBy}
+                  sizeClassName="h-7 w-7"
+                  className="text-[10px]"
+                />
+                {annotationCount > 1 && markerNumber != null && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-card bg-zinc-950 px-0.5 text-[8px] font-bold leading-none text-white">
+                    {markerNumber}
+                  </span>
                 )}
-              </div>
-              <span className="min-w-0 truncate text-[11px] text-muted-foreground/45">
-                {metaParts}
               </span>
-            </div>
+
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                <div
+                  className={`overflow-hidden whitespace-nowrap text-sm leading-tight ${annotation.note?.trim() ? "text-foreground/85" : "italic text-muted-foreground/50"}`}
+                >
+                  {annotation.note?.trim() ? (
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <span>{children}</span>,
+                        h1: ({ children }) => <span className="font-semibold">{children} </span>,
+                        h2: ({ children }) => <span className="font-semibold">{children} </span>,
+                        h3: ({ children }) => <span className="font-semibold">{children} </span>,
+                        ul: ({ children }) => <span>{children}</span>,
+                        ol: ({ children }) => <span>{children}</span>,
+                        li: ({ children }) => <span>{children} </span>,
+                      }}
+                    >
+                      {annotation.note}
+                    </ReactMarkdown>
+                  ) : (
+                    "No note - click to add one"
+                  )}
+                </div>
+                <span className="min-w-0 truncate text-[11px] text-muted-foreground/45">
+                  {metaParts}
+                </span>
+              </div>
+            </button>
 
             <Button
               variant="destructive"
@@ -451,7 +467,7 @@ function AnnotationListItems({
                 event.stopPropagation();
                 onDeleteAnnotation(annotation);
               }}
-              className="shrink-0 opacity-0 group-hover:opacity-100"
+              className="mr-3 shrink-0 opacity-0 group-hover:opacity-100"
             >
               <Trash2 size={12} />
             </Button>

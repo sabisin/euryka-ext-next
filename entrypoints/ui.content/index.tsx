@@ -5,7 +5,7 @@ import { AnnotationLayer } from "./AnnotationLayer";
 import { DraggableButton } from "./DraggableButton";
 import { sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
-import logo from "../../assets/ek-alt-blue.svg";
+import logo from "../../assets/ek-icon-new.svg";
 
 const CONTENT_UI_HOST_CSS = `
   :host {
@@ -31,7 +31,7 @@ function ContentUiApp() {
         const nextPrefs = await sendMessage("getUserPrefs", undefined);
         if (!cancelled) {
           setPrefs((current) =>
-            JSON.stringify(current) === JSON.stringify(nextPrefs) ? current : nextPrefs,
+            JSON.stringify(current) === JSON.stringify(nextPrefs) ? current : nextPrefs
           );
         }
       } catch {
@@ -77,10 +77,7 @@ export default defineContentScript({
       onMount(container) {
         container.style.pointerEvents = "none";
 
-        rootStore = container as unknown as Record<
-          string,
-          ReactDOM.Root | undefined
-        >;
+        rootStore = container as unknown as Record<string, ReactDOM.Root | undefined>;
         root = rootStore[rootKey] ?? ReactDOM.createRoot(container);
         rootStore[rootKey] = root;
         root.render(<ContentUiApp />);

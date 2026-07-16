@@ -1,7 +1,6 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useSparks } from "../../hooks/use-sparks";
-import { DEBUG } from "../../lib/debug";
 import type { ChatMode, Spark } from "../../lib/types";
 import { hexToRgba } from "../../lib/utils";
 import { IconWrapper } from "../shared/IconWrapper";
@@ -10,7 +9,6 @@ import { SparkCarousel } from "./SparkCarousel";
 
 interface Props {
   lastFive: string[];
-  currentUrl?: string | null;
   prospector?: {
     visible: boolean;
     title: string;
@@ -40,7 +38,6 @@ interface Props {
 
 export function SparksGallery({
   lastFive,
-  currentUrl,
   prospector,
   chatApiKeyAvailable,
   chatMode,
@@ -92,15 +89,6 @@ export function SparksGallery({
             className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm text-foreground placeholder-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/50"
           />
         </div>
-
-        {DEBUG && (
-          <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
-            <p className="truncate" title={currentUrl ?? ""}>
-              Current URL: {currentUrl || "(none)"}
-            </p>
-            <p className="truncate">Prospects visible: {String(Boolean(prospector?.visible))}</p>
-          </div>
-        )}
       </div>
 
       <div className="ek-scroll flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6 pt-2">
@@ -206,14 +194,4 @@ export function SparksGallery({
       </div>
     </div>
   );
-}
-
-function isLinkedInUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "linkedin.com" || host.endsWith(".linkedin.com");
-  } catch {
-    return false;
-  }
 }

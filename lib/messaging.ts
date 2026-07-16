@@ -7,7 +7,7 @@ import type {
   AnnotationUpdateInput,
   AnnotationUpdateResponse,
 } from "./annotations-api";
-import type { CollectionItemType, UserPrefs } from "./types";
+import type { CollectionItemType, UserIdentity, UserPrefs } from "./types";
 import type { PageContentBlock } from "./page-context";
 
 interface ProtocolMap {
@@ -17,7 +17,12 @@ interface ProtocolMap {
   getLinkedInProspectData(): import("./types").LinkedInProspectData;
   textSelected(data: { text: string; selector: string }): void;
   saveText(data: { text: string }): void;
-  analyseImage(data: { imageUrl: string; pageUrl?: string; pageContent?: string; forTabId?: number }): void;
+  analyseImage(data: {
+    imageUrl: string;
+    pageUrl?: string;
+    pageContent?: string;
+    forTabId?: number;
+  }): void;
   triggerSpark(data: { sparkId: string; forTabId?: number }): void;
   createAnnotationMarker(): void;
   listAnnotations(data: AnnotationListParams): AnnotationListResponse;
@@ -29,6 +34,7 @@ interface ProtocolMap {
   getUserPrefs(): UserPrefs;
   updateUserPrefs(data: Partial<UserPrefs>): UserPrefs;
   getCurrentIdentity(): string | null;
+  getCurrentUser(): UserIdentity;
   openSidePanel(): void;
   pageDragStart(): void;
   pageDragEnd(): void;
@@ -36,7 +42,14 @@ interface ProtocolMap {
   keepAlive(): void;
   reset(): void;
   getTabUrl(data: { tabId: number }): { url: string };
-  saveToCollection(data: { type: CollectionItemType; title: string; content: string; thumbnail?: string; sourceUrl: string; forTabId?: number }): void;
+  saveToCollection(data: {
+    type: CollectionItemType;
+    title: string;
+    content: string;
+    thumbnail?: string;
+    sourceUrl: string;
+    forTabId?: number;
+  }): void;
 }
 
 // Capture the messenger so we can also expose `removeAllListeners` — needed

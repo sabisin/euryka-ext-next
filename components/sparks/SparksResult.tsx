@@ -4,6 +4,7 @@ import { describeMarkdownContent } from "../../lib/markdown-diagnostics";
 import type { Spark } from "../../lib/types";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { IconWrapper } from "../shared/IconWrapper";
+import { MarkdownScrollArea } from "../shared/MarkdownScrollArea";
 import { StickyActionBar } from "../shared/StickyActionBar";
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
@@ -62,9 +63,9 @@ export function SparksResult({ result, sessionId, sourceUrl, spark, wsId }: Prop
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <MarkdownScrollArea className="px-4 py-4">
         <AnimatedMarkdown content={result} />
-      </div>
+      </MarkdownScrollArea>
 
       <StickyActionBar content={result} openUrl={threadUrl} />
     </div>
