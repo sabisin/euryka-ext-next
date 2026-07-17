@@ -1,12 +1,13 @@
-import { useState } from "react";
 import { format, isValid } from "date-fns";
 import { ImageIcon } from "lucide-react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { firestoreTsToDate, hexToRgba } from "../../lib/utils";
+import { repairMarkdownForDisplay } from "../../lib/markdown";
 import { getSessionDisplay } from "../../lib/session-display";
-import { IconWrapper } from "../shared/IconWrapper";
 import type { Session, SparkCache } from "../../lib/types";
+import { firestoreTsToDate, hexToRgba } from "../../lib/utils";
+import { IconWrapper } from "../shared/IconWrapper";
 
 interface Props {
   session: Session;
@@ -77,7 +78,7 @@ export function SessionCard({ session, sparkCache, onClick }: Props) {
               li: ({ children }) => <span>{children} </span>,
             }}
           >
-            {session.content}
+            {repairMarkdownForDisplay(session.content)}
           </ReactMarkdown>
         </div>
       </div>

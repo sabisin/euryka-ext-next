@@ -9,6 +9,7 @@ import {
   listAnnotations,
 } from "../../lib/annotations-api";
 import { runWithTokenRetry } from "../../lib/auth";
+import { repairMarkdownForDisplay } from "../../lib/markdown";
 import { sendMessage } from "../../lib/messaging";
 import { authStorage, pageUrlStorage, userPrefs } from "../../lib/storage";
 import type { AuthState, UserPrefs } from "../../lib/types";
@@ -440,7 +441,7 @@ function AnnotationListItems({
                         li: ({ children }) => <span>{children} </span>,
                       }}
                     >
-                      {annotation.note}
+                      {repairMarkdownForDisplay(annotation.note)}
                     </ReactMarkdown>
                   ) : (
                     "No note - click to add one"

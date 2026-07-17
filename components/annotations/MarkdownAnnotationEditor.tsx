@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { repairMarkdownForDisplay } from "../../lib/markdown";
 import { Button } from "../shared/Button";
 
 interface Props {
@@ -46,6 +47,7 @@ export function MarkdownAnnotationEditor({
 }: Props) {
   const [isBlockMenuOpen, setIsBlockMenuOpen] = useState(false);
   const editorShellRef = useRef<HTMLDivElement>(null);
+  const repairedContent = repairMarkdownForDisplay(content);
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -56,7 +58,7 @@ export function MarkdownAnnotationEditor({
         },
       }),
     ],
-    content,
+    content: repairedContent,
     contentType: "markdown",
     autofocus: autoFocus,
     editorProps: {
@@ -85,12 +87,12 @@ export function MarkdownAnnotationEditor({
 
   useEffect(() => {
     if (!editor) return;
-    if (editor.getMarkdown() === content) return;
-    editor.commands.setContent(content, {
+    if (editor.getMarkdown() === repairedContent) return;
+    editor.commands.setContent(repairedContent, {
       contentType: "markdown",
       emitUpdate: false,
     });
-  }, [content, editor]);
+  }, [editor, repairedContent]);
 
   const save = () => {
     if (!editor) return;

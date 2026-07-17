@@ -1,3 +1,4 @@
+import { formatDistanceToNow, isValid } from "date-fns";
 import {
   ArrowLeft,
   Check,
@@ -11,11 +12,11 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { formatDistanceToNow, isValid } from "date-fns";
 import { useStorageItem } from "../../hooks/use-storage-item";
-import { collectionsStorage, collectionItemsStorage } from "../../lib/storage";
+import { repairMarkdownForDisplay } from "../../lib/markdown";
+import { collectionItemsStorage, collectionsStorage } from "../../lib/storage";
 import type { CollectionItem, CollectionItemType } from "../../lib/types";
 import { Button } from "../shared/Button";
 
@@ -167,7 +168,7 @@ export function CollectionItemView({ itemId, onBack }: Props) {
               >
                 {draft.trim() ? (
                   <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                    {withHardLineBreaks(draft)}
+                    {withHardLineBreaks(repairMarkdownForDisplay(draft))}
                   </ReactMarkdown>
                 ) : (
                   <p className="text-sm italic text-muted-foreground/50">No comments yet.</p>
@@ -226,7 +227,7 @@ function ItemPreview({ item }: { item: CollectionItem }) {
       <div className="flex flex-col gap-3">
         <div className="prose prose-sm max-w-none rounded-md border border-border/70 bg-card/25 px-3 py-3 text-foreground/85">
           <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-            {withHardLineBreaks(item.content)}
+            {withHardLineBreaks(repairMarkdownForDisplay(item.content))}
           </ReactMarkdown>
         </div>
         <SourceLink item={item} />

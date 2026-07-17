@@ -1,3 +1,5 @@
+import { repairMarkdownStructure } from "./markdown";
+
 export function describeMarkdownContent(content: string) {
   const lines = content.split(/\r?\n/);
   return {
@@ -25,43 +27,5 @@ export function repairFlattenedMarkdown(content: string): {
   content: string;
   repaired: boolean;
 } {
-  const trimmed = content.trim();
-  const newlineCount = (trimmed.match(/\r?\n/g) ?? []).length;
-  if (trimmed.length < 200 || newlineCount > 1 || !/^\s*#{1,6}\s/.test(trimmed)) {
-    return { content, repaired: false };
-  }
-
-  let repaired = splitLeadingHeading(trimmed);
-  repaired = repaired.replace(/\s+---\s+/g, "\n\n---\n\n");
-  repaired = repaired.replace(/#{1,6}\s/g, (marker, offset: number, source: string) => {
-    if (offset === 0 || source[offset - 1] === "\n") return marker;
-    return `\n\n${marker}`;
-  });
-  repaired = repaired.replace(/\s+-\s{2,}(?=\S)/g, "\n- ");
-  repaired = repaired
-    .replace(/[ \t]*\n[ \t]*/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return {
-    content: repaired,
-    repaired: repaired !== trimmed,
-  };
-}
-
-function splitLeadingHeading(content: string): string {
-  const structuralMarkerIndex = content.search(/\s+(?:---|##)\s/);
-  const leadingEnd = structuralMarkerIndex > 0 ? structuralMarkerIndex : content.length;
-  const leadingSection = content.slice(0, Math.min(leadingEnd, 400));
-  const sentenceBoundary = /[.!?]["')\]]*\s+(?=[\p{Lu}\d])/u.exec(leadingSection);
-
-  if (sentenceBoundary && sentenceBoundary.index >= 40) {
-    const splitAt = sentenceBoundary.index + sentenceBoundary[0].trimEnd().length;
-    return `${content.slice(0, splitAt)}\n\n${content.slice(splitAt).trimStart()}`;
-  }
-
-  if (leadingEnd <= 320) return content;
-  const fallbackSpace = content.lastIndexOf(" ", 180);
-  if (fallbackSpace <= 40) return content;
-  return `${content.slice(0, fallbackSpace)}\n\n${content.slice(fallbackSpace + 1)}`;
+  return repairMarkdownStructure(content);
 }
