@@ -431,8 +431,9 @@ function SidePanel() {
                 spark: LINKEDIN_PROSPECTOR_SPARK,
                 sourceUrl: sparkResultSourceUrl,
                 isLoading: isLoadingSpark,
-                apiKey: chatApiKey ?? "",
+                wsId: selectedWorkspaceId,
                 brandId: selectedBrandId,
+                projectId: selectedProjectId,
                 onBack: () => {
                   setProspectorResult(null);
                   setShowSparkResult(false);

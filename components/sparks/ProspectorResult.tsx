@@ -1,6 +1,7 @@
 import { ArrowLeft, Building2, ExternalLink, User } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createLinkedInContact } from "../../lib/api";
+import { fetchAndStoreToken, getValidToken } from "../../lib/auth";
 import type { LinkedInProspectData, LinkedInRelatedPage, Spark } from "../../lib/types";
 import { Button } from "../shared/Button";
 import { IconWrapper } from "../shared/IconWrapper";
@@ -10,8 +11,9 @@ interface Props {
   spark: Spark;
   sourceUrl: string | null;
   isLoading: boolean;
-  apiKey: string;
+  wsId: string | null;
   brandId?: string | null;
+  projectId?: string | null;
   onBack: () => void;
 }
 
@@ -31,8 +33,9 @@ export function ProspectorResult({
   spark,
   sourceUrl,
   isLoading,
-  apiKey,
+  wsId,
   brandId,
+  projectId,
   onBack,
 }: Props) {
   const [profiles, setProfiles] = useState<SubmitProfile[]>(() => normalizeProfiles(prospect));
@@ -61,8 +64,7 @@ export function ProspectorResult({
   };
 
   const handleSubmit = async () => {
-    const contactsApiKey = apiKey.trim();
-    if (!contactsApiKey || selectedProfiles.length === 0 || isSubmitting) return;
+    if (!wsId || selectedProfiles.length === 0 || isSubmitting) return;
 
     setIsSubmitting(true);
     setFeedback(null);
@@ -76,12 +78,42 @@ export function ProspectorResult({
     };
 
     try {
+      let token = await getValidToken();
+      if (!token) {
+        setFeedback({
+          kind: "error",
+          message: "Authentication expired. Please sign in again.",
+          failedUrls: [],
+        });
+        return;
+      }
+
       for (const profile of dedupeProfiles(selectedProfiles)) {
-        const result = await createLinkedInContact(contactsApiKey, {
+        const sourcePage = {
+          url: sourceUrl || prospect.pageUrl || profile.url,
+          content: "",
+        };
+        let result = await createLinkedInContact(token, wsId, {
           linkedinUrl: profile.url,
+          page: sourcePage,
           brandId: brandId ?? undefined,
+          projectId: projectId ?? undefined,
           name: profile.name,
         });
+
+        if (!result.ok && result.status === 403) {
+          const refreshed = await fetchAndStoreToken();
+          if (refreshed) {
+            token = refreshed;
+            result = await createLinkedInContact(token, wsId, {
+              linkedinUrl: profile.url,
+              page: sourcePage,
+              brandId: brandId ?? undefined,
+              projectId: projectId ?? undefined,
+              name: profile.name,
+            });
+          }
+        }
 
         if (result.ok) {
           if (result.contact.existing) stats.existing += 1;
@@ -242,14 +274,10 @@ export function ProspectorResult({
             variant="primary"
             size="md"
             onClick={handleSubmit}
-            disabled={!apiKey.trim() || selectedProfiles.length === 0 || isSubmitting}
+            disabled={!wsId || selectedProfiles.length === 0 || isSubmitting}
             className="w-full"
           >
-            {isSubmitting
-              ? "Adding..."
-              : apiKey.trim()
-                ? "Add to prospects"
-                : "Add an Euryka API key in Settings"}
+            {isSubmitting ? "Adding..." : "Add to prospects"}
           </Button>
         </div>
       )}
@@ -323,7 +351,7 @@ function getContactsApiError(status: number, errorText?: string): string {
       return errorText.slice(0, 240);
     }
   }
-  if (status === 401) return "The configured Euryka API key is missing, invalid, or revoked.";
+  if (status === 403) return "Your session expired or cannot access this workspace.";
   return `Contacts API request failed (${status}).`;
 }
 

@@ -88,9 +88,8 @@ export interface LinkedInProspectData extends LinkedInProspectorStatus {
 }
 
 export interface CreateLinkedInContactResponse {
-  contactId: string;
+  url: string;
   existing?: boolean;
-  url?: string;
 }
 
 export type CreateLinkedInContactResult =

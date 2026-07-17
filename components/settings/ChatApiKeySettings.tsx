@@ -38,10 +38,8 @@ export function ChatApiKeySettings({ apiKey, onSave, onRemove }: Props) {
     <div className="flex flex-col gap-3 border-b border-border px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Euryka API key</p>
-          <p className="text-xs text-muted-foreground">
-            Used for Chat and Contacts. Stored locally in this browser extension.
-          </p>
+          <p className="text-sm font-medium text-foreground">Chat API key</p>
+          <p className="text-xs text-muted-foreground">Stored locally in this browser extension.</p>
         </div>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <KeyRound size={15} />

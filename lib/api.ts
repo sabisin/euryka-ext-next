@@ -170,30 +170,39 @@ export async function uploadToGcs(signedUrl: string, file: File): Promise<void> 
 }
 
 export async function createLinkedInContact(
-  apiKey: string,
+  token: string,
+  wsId: string,
   payload: {
     linkedinUrl: string;
+    page: {
+      url: string;
+      content?: string;
+    };
     brandId?: string;
+    projectId?: string;
     name?: string;
   }
 ): Promise<CreateLinkedInContactResult> {
   const body = buildLinkedInContactRequestBody(payload);
 
-  const res = await fetch(`${BASE_URL}/api/v1/contacts`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    `${BASE_URL}/api/ws/${encodeURIComponent(wsId)}/extension/sparks/linkedIn`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }
+  );
 
   const responseText = await res.text().catch(() => "");
   const responseBody = responseText
     ? parseJson<CreateLinkedInContactResponse>(responseText)
     : undefined;
 
-  if (!res.ok || !responseBody?.contactId) {
+  if (!res.ok || !responseBody?.url) {
     return {
       ok: false,
       status: res.status,
@@ -204,23 +213,29 @@ export async function createLinkedInContact(
   return {
     ok: true,
     status: res.status,
-    contact: {
-      ...responseBody,
-      url: payload.linkedinUrl,
-    },
+    contact: responseBody,
   };
 }
 
 export function buildLinkedInContactRequestBody(payload: {
   linkedinUrl: string;
+  page: {
+    url: string;
+    content?: string;
+  };
   brandId?: string;
+  projectId?: string;
   name?: string;
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     linkedinUrl: payload.linkedinUrl,
-    enrich: true,
+    page: {
+      url: payload.page.url,
+      content: payload.page.content ?? "",
+    },
   };
   if (payload.brandId) body.brandId = payload.brandId;
+  if (payload.projectId) body.projectId = payload.projectId;
   if (payload.name) body.name = payload.name;
   return body;
 }
