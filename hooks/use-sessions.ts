@@ -12,12 +12,13 @@ export function useSessions(wsId: string | null) {
     queryKey: ["sessions", wsId],
     enabled: !!wsId,
     initialPageParam: undefined as string | undefined,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 60_000,
+    refetchOnMount: true,
     queryFn: async ({ pageParam }) => {
+      if (!wsId) throw new Error("No workspace selected");
       const token = await getValidToken();
       if (!token) throw new Error("Not authenticated");
-      return fetchSessions(token, wsId!, pageParam);
+      return fetchSessions(token, wsId, pageParam);
     },
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.sessions.length === 0) return undefined;
