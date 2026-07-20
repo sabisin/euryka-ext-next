@@ -1,11 +1,11 @@
-import ReactDOM from "react-dom/client";
 import { useEffect, useState } from "react";
+import ReactDOM from "react-dom/client";
 import "../../tailwind.css";
-import { AnnotationLayer } from "./AnnotationLayer";
-import { DraggableButton } from "./DraggableButton";
+import logo from "../../assets/logo-remade-red-white.svg";
 import { sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
-import logo from "../../assets/ek-icon-new.svg";
+import { AnnotationLayer } from "./AnnotationLayer";
+import { DraggableButton } from "./DraggableButton";
 
 const CONTENT_UI_HOST_CSS = `
   :host {

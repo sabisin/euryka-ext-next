@@ -1,6 +1,8 @@
 import { FileText, Highlighter, KeyRound, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import ekIcon from "../../assets/ek-icon.svg";
+import ekIconLight from "../../assets/logo-remade-black-red.svg";
+import ekIconDark from "../../assets/logo-remade-red-white.svg";
+import { useTheme } from "../../hooks/use-theme";
 import type { ChatMode } from "../../lib/types";
 import { PromptInput, PromptInputToolButton } from "../shared/PromptInput";
 
@@ -133,6 +135,7 @@ export function ChatBox({
 
 function ProviderBadge({ label }: { label: string }) {
   const isGoogleProvider = isGoogleProviderLabel(label);
+  const theme = useTheme();
 
   return (
     <span
@@ -143,7 +146,12 @@ function ProviderBadge({ label }: { label: string }) {
       {isGoogleProvider ? (
         <GoogleLogo className="h-3.5 w-3.5" />
       ) : (
-        <img src={ekIcon} alt="" aria-hidden="true" className="h-3.5 w-3.5" />
+        <img
+          src={theme === "dark" ? ekIconDark : ekIconLight}
+          alt=""
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+        />
       )}
     </span>
   );

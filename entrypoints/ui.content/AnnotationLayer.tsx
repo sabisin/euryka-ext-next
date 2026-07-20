@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import logo from "../../assets/ek-icon-new.svg";
+import logo from "../../assets/logo-remade-red-white.svg";
 import { AnnotationAvatar } from "../../components/annotations/AnnotationAvatar";
 import { MarkdownAnnotationEditor } from "../../components/annotations/MarkdownAnnotationEditor";
 import { Button } from "../../components/shared/Button";
