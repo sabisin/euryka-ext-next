@@ -10,7 +10,7 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
-  ReceiptText,
+  Receipt,
   Settings,
   Zap,
 } from "lucide-react";
@@ -105,7 +105,7 @@ export function NavRail({ currentPage, onNavigate, onOpenSidebar }: NavRailProps
           aria-label="Billing"
           onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
         >
-          <ReceiptText size={16} />
+          <Receipt size={16} />
         </Button>
         <Button
           variant="icon"
@@ -219,7 +219,7 @@ export function AppSidebar({
               </nav>
 
               {/* Footer links */}
-              <div className="space-y-0.5 border-t border-border px-2 pb-3 pt-2">
+              <div className="mt-auto shrink-0 space-y-0.5 border-t border-border px-2 pb-3 pt-2">
                 <Button
                   variant={currentPage === "settings" ? "secondary" : "ghost"}
                   size="md"
@@ -238,7 +238,7 @@ export function AppSidebar({
                   onClick={() => chrome.tabs.create({ url: `${BASE_URL}/billing` })}
                   className="w-full justify-start"
                 >
-                  <ReceiptText size={16} />
+                  <Receipt size={16} />
                   Billing
                 </Button>
                 <Button
@@ -294,7 +294,7 @@ function WorkspaceDropdown({ workspaces, selectedId, onSelect }: WorkspaceDropdo
             className="fixed inset-0 z-50 border-0 bg-transparent p-0"
             onClick={() => setOpen(false)}
           />
-          <div className="ek-scroll absolute left-0 right-0 top-full z-[60] mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-xl">
+          <div className="ek-scroll absolute left-0 right-0 top-full z-[60] mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-xl">
             {workspaces.map((ws) => {
               const isSelected = ws.id === selectedId;
               return (
@@ -306,7 +306,7 @@ function WorkspaceDropdown({ workspaces, selectedId, onSelect }: WorkspaceDropdo
                     onSelect(ws.id);
                     setOpen(false);
                   }}
-                  className={`w-full justify-start rounded-none px-3 text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
+                  className={`w-full justify-start rounded-md px-3 text-left ${isSelected ? "text-foreground" : "text-foreground/70"}`}
                 >
                   <span className="min-w-0 flex-1 truncate text-left">{ws.name}</span>
                   {isSelected && (
