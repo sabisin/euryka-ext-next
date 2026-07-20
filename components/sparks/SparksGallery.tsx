@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSparks } from "../../hooks/use-sparks";
 import type { ChatMode, Spark } from "../../lib/types";
 import { hexToRgba } from "../../lib/utils";
@@ -58,7 +58,32 @@ export function SparksGallery({
   onIncludeSelectedTextChange,
 }: Props) {
   const [search, setSearch] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopBlur, setShowTopBlur] = useState(false);
+  const [showBottomBlur, setShowBottomBlur] = useState(false);
   const { data: groups = [], isLoading } = useSparks();
+
+  const updateScrollBlur = useCallback(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    setShowTopBlur(viewport.scrollTop > 4);
+    setShowBottomBlur(distanceFromBottom > 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollBlur();
+
+    const observer = new ResizeObserver(updateScrollBlur);
+    if (scrollRef.current) {
+      observer.observe(scrollRef.current);
+      const content = scrollRef.current.firstElementChild;
+      if (content) observer.observe(content);
+    }
+
+    return () => observer.disconnect();
+  }, [updateScrollBlur]);
 
   const term = search.toLowerCase();
   const allSparks: Spark[] = groups.flatMap((g) => g.sparks);
@@ -91,88 +116,103 @@ export function SparksGallery({
         </div>
       </div>
 
-      <div className="ek-scroll flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6 pt-2">
-        {isLoading && (
-          <div className="flex flex-col gap-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-[68px] rounded-lg border border-border bg-card animate-pulse"
-              />
-            ))}
-          </div>
-        )}
-
-        {!isLoading && (
-          <>
-            {prospector?.visible && (
-              <section className="flex flex-col gap-2.5">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {prospector.title}
-                </h3>
-                <button
-                  type="button"
-                  onClick={prospector.onClick}
-                  title={prospector.title}
-                  style={{ backgroundColor: hexToRgba(prospector.color, 0.18) }}
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-[opacity,transform] hover:opacity-70 active:scale-95"
-                >
-                  <IconWrapper color={prospector.color} name={prospector.icon} size={18} />
-                </button>
-              </section>
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          className="ek-scroll h-full overflow-y-auto"
+          onScroll={updateScrollBlur}
+        >
+          <div className="flex min-h-full flex-col gap-6 px-4 pb-6 pt-2">
+            {isLoading && (
+              <div className="flex flex-col gap-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="h-[68px] rounded-lg border border-border bg-card animate-pulse"
+                  />
+                ))}
+              </div>
             )}
 
-            {/* Recent sparks */}
-            {recentSparks.length > 0 && !search && (
-              <section className="flex flex-col gap-2.5">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Recent
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {recentSparks.map((spark) => {
-                    const color = spark.color || "#FF7074";
-                    return (
-                      <button
-                        key={spark.id}
-                        type="button"
-                        onClick={() => onUseSpark(spark)}
-                        title={spark.title}
-                        style={{ backgroundColor: hexToRgba(color, 0.18) }}
-                        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-[opacity,transform] hover:opacity-70 active:scale-95"
-                      >
-                        <IconWrapper color={color} name={spark.icon} size={18} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
-            {/* Groups */}
-            {visibleGroups.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                {search ? "No sparks match your search" : "No sparks available"}
-              </p>
-            ) : (
-              visibleGroups.map((group) => (
-                <section key={group.title} className="flex flex-col gap-2.5">
-                  <div className="flex flex-col gap-0.5">
+            {!isLoading && (
+              <>
+                {prospector?.visible && (
+                  <section className="flex flex-col gap-2.5">
                     <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group.title || "Untitled"}
+                      {prospector.title}
                     </h3>
-                    {group.description && (
-                      <p className="text-xs text-muted-foreground">{group.description}</p>
-                    )}
-                  </div>
-                  <SparkCarousel sparks={group.sparks} onUseSpark={onUseSpark} />
-                </section>
-              ))
+                    <button
+                      type="button"
+                      onClick={prospector.onClick}
+                      title={prospector.title}
+                      style={{ backgroundColor: hexToRgba(prospector.color, 0.18) }}
+                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-[opacity,transform] hover:opacity-70 active:scale-95"
+                    >
+                      <IconWrapper color={prospector.color} name={prospector.icon} size={18} />
+                    </button>
+                  </section>
+                )}
+
+                {/* Recent sparks */}
+                {recentSparks.length > 0 && !search && (
+                  <section className="flex flex-col gap-2.5">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Recent
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {recentSparks.map((spark) => {
+                        const color = spark.color || "#FF7074";
+                        return (
+                          <button
+                            key={spark.id}
+                            type="button"
+                            onClick={() => onUseSpark(spark)}
+                            title={spark.title}
+                            style={{ backgroundColor: hexToRgba(color, 0.18) }}
+                            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-[opacity,transform] hover:opacity-70 active:scale-95"
+                          >
+                            <IconWrapper color={color} name={spark.icon} size={18} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {/* Groups */}
+                {visibleGroups.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    {search ? "No sparks match your search" : "No sparks available"}
+                  </p>
+                ) : (
+                  visibleGroups.map((group) => (
+                    <section key={group.title} className="flex flex-col gap-2.5">
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {group.title || "Untitled"}
+                        </h3>
+                        {group.description && (
+                          <p className="text-xs text-muted-foreground">{group.description}</p>
+                        )}
+                      </div>
+                      <SparkCarousel sparks={group.sparks} onUseSpark={onUseSpark} />
+                    </section>
+                  ))
+                )}
+              </>
             )}
-          </>
+          </div>
+        </div>
+
+        {showTopBlur && (
+          <div aria-hidden className="scroll-progressive-blur scroll-progressive-blur-top" />
+        )}
+        {showBottomBlur && (
+          <div aria-hidden className="scroll-progressive-blur scroll-progressive-blur-bottom" />
         )}
       </div>
 
-      <div className="shrink-0 border-t border-border bg-background px-4 py-3">
+      <div className="shrink-0 bg-background px-4 py-3">
         <ChatBox
           apiKeyAvailable={chatApiKeyAvailable}
           mode={chatMode}
