@@ -1,15 +1,9 @@
 import { fetchAndStoreToken } from "../../lib/auth";
-import { useTheme } from "../../hooks/use-theme";
+import { AnimatedEurykaLogo } from "../shared/AnimatedEurykaLogo";
 import { Button } from "../shared/Button";
-import logo from "../../assets/ek-icon.svg";
-import blackLogo from "../../assets/ek-icon-black.svg";
-
-const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+import { EurykaWordmark } from "../shared/EurykaWordmark";
 
 export function LoggedOut() {
-  const theme = useTheme();
-  const displayLogo = theme === "light" ? blackLogo : logo;
-
   const handleContinue = async () => {
     // Try a silent token fetch first (cookie-based auth)
     const token = await fetchAndStoreToken();
@@ -20,29 +14,21 @@ export function LoggedOut() {
   };
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-background px-6 text-center">
-      <div className="flex flex-col items-center gap-3">
-        <img src={displayLogo} alt="" className="h-16 w-16" draggable={false} />
-        <div className="text-4xl font-bold text-foreground">Euryka</div>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Your AI Swiss Army Knife. Sign in to get started.
-        </p>
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-8 bg-background px-6 text-center">
+      <div className="flex items-center justify-center gap-3">
+        <AnimatedEurykaLogo className="h-16 w-auto text-foreground" />
+        <EurykaWordmark className="h-10 w-auto text-foreground" />
       </div>
 
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={handleContinue}
-          className="w-full rounded-lg"
-        >
-          Continue
+      <div className="flex items-center justify-center gap-3">
+        <Button variant="primary" size="lg" onClick={handleContinue} className="px-4">
+          Get Started
         </Button>
         <Button
-          variant="outline"
-          size="lg"
-          onClick={() => chrome.tabs.create({ url: `${BASE_URL}/integrations/chrome-ext` })}
-          className="w-full rounded-lg text-muted-foreground"
+          variant="ghost"
+          size="sm"
+          onClick={() => chrome.tabs.create({ url: "https://euryka.ai/" })}
+          className="h-10 px-2 text-muted-foreground underline underline-offset-4 hover:bg-transparent hover:text-foreground"
         >
           Learn more
         </Button>

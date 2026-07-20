@@ -13,6 +13,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.2.8",
     "@supabase/supabase-js": "2.105.3",
     "@tanstack/react-query": "^5.80.0",
     "@tiptap/markdown": "3.27.2",
