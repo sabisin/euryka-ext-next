@@ -28,7 +28,7 @@ export function StickyActionBar({
   };
 
   return (
-    <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-background px-4 py-2.5">
+    <div className="sticky bottom-0 flex items-center gap-2 bg-background px-4 py-2.5">
       <Button
         variant="ghost"
         size="sm"
