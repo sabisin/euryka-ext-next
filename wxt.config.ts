@@ -20,6 +20,7 @@ export default defineConfig({
       "webNavigation",
       "declarativeNetRequestWithHostAccess",
       "contextMenus",
+      "notifications",
     ],
     // <all_urls> is required: the content script runs on every site (floating
     // button, selection tracking, annotations), image analysis fetches images

@@ -23,9 +23,19 @@ type SubmitProfile = LinkedInRelatedPage & {
 };
 
 type SubmitFeedback = {
-  kind: "success" | "warning" | "error";
+  kind: "warning" | "error";
   message: string;
   failedUrls: string[];
+};
+
+type SubmitStats = {
+  created: number;
+  existing: number;
+  failed: number;
+  failedUrls: string[];
+  errorText: string;
+  createdNames: string[];
+  existingNames: string[];
 };
 
 export function ProspectorResult({
@@ -69,12 +79,14 @@ export function ProspectorResult({
     setIsSubmitting(true);
     setFeedback(null);
 
-    const stats = {
+    const stats: SubmitStats = {
       created: 0,
       existing: 0,
       failed: 0,
       failedUrls: [] as string[],
       errorText: "",
+      createdNames: [],
+      existingNames: [],
     };
 
     try {
@@ -116,8 +128,13 @@ export function ProspectorResult({
         }
 
         if (result.ok) {
-          if (result.contact.existing) stats.existing += 1;
-          else stats.created += 1;
+          if (result.contact.existing) {
+            stats.existing += 1;
+            stats.existingNames.push(profile.name);
+          } else {
+            stats.created += 1;
+            stats.createdNames.push(profile.name);
+          }
         } else {
           stats.failed += 1;
           stats.failedUrls.push(profile.url);
@@ -125,7 +142,15 @@ export function ProspectorResult({
         }
       }
 
-      setFeedback(buildFeedback(stats));
+      const successful = stats.created + stats.existing;
+      if (successful > 0) {
+        try {
+          await showProspectsNotification(stats);
+        } catch (error) {
+          console.error("Failed to show Prospects notification", error);
+        }
+      }
+      setFeedback(buildFailureFeedback(stats));
     } finally {
       setIsSubmitting(false);
     }
@@ -256,7 +281,7 @@ export function ProspectorResult({
         <div className="sticky bottom-0 border-t border-border bg-background px-4 py-3">
           {feedback && (
             <div
-              className={`mb-2 text-sm ${feedback.kind === "error" ? "text-red-600" : feedback.kind === "warning" ? "text-amber-600" : "text-green-600"}`}
+              className={`mb-2 text-sm ${feedback.kind === "error" ? "text-red-600" : "text-amber-600"}`}
             >
               <p>{feedback.message}</p>
               {feedback.failedUrls.length > 0 && (
@@ -317,24 +342,38 @@ function dedupeProfiles(profiles: SubmitProfile[]): SubmitProfile[] {
   return Array.from(new Map(profiles.map((profile) => [profile.url, profile])).values());
 }
 
-function buildFeedback(stats: {
-  created: number;
-  existing: number;
-  failed: number;
-  failedUrls: string[];
-  errorText: string;
-}): SubmitFeedback {
+function buildFailureFeedback(stats: SubmitStats): SubmitFeedback | null {
+  if (!stats.failed) return null;
   const successful = stats.created + stats.existing;
-  const parts = [];
-  if (stats.created) parts.push(`${stats.created} added`);
-  if (stats.existing) parts.push(`${stats.existing} already existed`);
-  if (stats.failed)
-    parts.push(successful ? `${stats.failed} failed` : `All ${stats.failed} failed`);
   return {
-    kind: stats.failed ? (successful ? "warning" : "error") : "success",
-    message: `${parts.join(", ") || "No profiles submitted."}${stats.errorText ? ` — ${stats.errorText}` : ""}`,
+    kind: successful ? "warning" : "error",
+    message: `${successful ? `${successful} saved, ${stats.failed} failed` : `All ${stats.failed} failed`}${stats.errorText ? ` — ${stats.errorText}` : ""}`,
     failedUrls: stats.failedUrls,
   };
+}
+
+async function showProspectsNotification(stats: SubmitStats) {
+  const savedNames = [...stats.createdNames, ...stats.existingNames];
+  const count = savedNames.length;
+  const visibleNames = savedNames.slice(0, 3).join(", ");
+  const remaining = count - Math.min(count, 3);
+  const message =
+    count === 1
+      ? `${visibleNames} was saved to Prospects.`
+      : `${visibleNames}${remaining > 0 ? ` and ${remaining} more` : ""} were saved to Prospects.`;
+  const details = [
+    stats.created ? `${stats.created} added` : "",
+    stats.existing ? `${stats.existing} already existed` : "",
+    stats.failed ? `${stats.failed} failed` : "",
+  ].filter(Boolean);
+
+  await chrome.notifications.create({
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("ek-icon128.png"),
+    title: count === 1 ? "Prospect saved" : `${count} prospects saved`,
+    message,
+    contextMessage: details.join(" · "),
+  });
 }
 
 function getContactsApiError(status: number, errorText?: string): string {
