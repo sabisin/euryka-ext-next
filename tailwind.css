@@ -191,47 +191,126 @@
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  height: 3rem;
+  height: 4.5rem;
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    transparent,
-    color-mix(in oklab, var(--background) 78%, transparent)
+    transparent 0%,
+    color-mix(in oklab, var(--background) 8%, transparent) 28%,
+    color-mix(in oklab, var(--background) 36%, transparent) 62%,
+    color-mix(in oklab, var(--background) 82%, transparent) 100%
   );
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000);
-  mask-image: linear-gradient(to bottom, transparent, #000);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
 }
 
 .scroll-progressive-blur {
   position: absolute;
   z-index: 10;
   inset-inline: 0;
-  height: 3rem;
+  height: 4.5rem;
   pointer-events: none;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .scroll-progressive-blur-top {
   top: 0;
   background: linear-gradient(
     to top,
-    transparent,
-    color-mix(in oklab, var(--background) 78%, transparent)
+    transparent 0%,
+    color-mix(in oklab, var(--background) 8%, transparent) 28%,
+    color-mix(in oklab, var(--background) 36%, transparent) 62%,
+    color-mix(in oklab, var(--background) 82%, transparent) 100%
   );
-  -webkit-mask-image: linear-gradient(to top, transparent, #000);
-  mask-image: linear-gradient(to top, transparent, #000);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to top,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
 }
 
 .scroll-progressive-blur-bottom {
   bottom: 0;
   background: linear-gradient(
     to bottom,
-    transparent,
-    color-mix(in oklab, var(--background) 78%, transparent)
+    transparent 0%,
+    color-mix(in oklab, var(--background) 8%, transparent) 28%,
+    color-mix(in oklab, var(--background) 36%, transparent) 62%,
+    color-mix(in oklab, var(--background) 82%, transparent) 100%
   );
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000);
-  mask-image: linear-gradient(to bottom, transparent, #000);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(0 0 0 / 8%) 22%,
+    rgb(0 0 0 / 42%) 58%,
+    #000 100%
+  );
+}
+
+.progressive-blur-surface-bottom,
+.progressive-blur-surface-top {
+  z-index: 20;
+  background-color: var(--background);
+}
+
+.progressive-blur-surface-bottom::before,
+.progressive-blur-surface-top::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  height: 3rem;
+  pointer-events: none;
+}
+
+.progressive-blur-surface-bottom::before {
+  bottom: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklab, var(--background) 12%, transparent) 34%,
+    color-mix(in oklab, var(--background) 52%, transparent) 72%,
+    var(--background) 100%
+  );
+}
+
+.progressive-blur-surface-top::after {
+  top: 100%;
+  background: linear-gradient(
+    to bottom,
+    var(--background) 0%,
+    color-mix(in oklab, var(--background) 52%, transparent) 28%,
+    color-mix(in oklab, var(--background) 12%, transparent) 66%,
+    transparent 100%
+  );
 }

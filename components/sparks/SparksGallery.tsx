@@ -100,7 +100,7 @@ export function SparksGallery({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 bg-background/95 px-4 pb-3 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <div className="progressive-blur-surface-top relative shrink-0 px-4 pb-3 pt-4">
         <div className="relative">
           <Search
             size={14}
@@ -212,7 +212,7 @@ export function SparksGallery({
         )}
       </div>
 
-      <div className="shrink-0 bg-background px-4 py-3">
+      <div className="progressive-blur-surface-bottom relative shrink-0 px-4 py-3">
         <ChatBox
           apiKeyAvailable={chatApiKeyAvailable}
           mode={chatMode}
