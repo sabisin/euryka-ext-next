@@ -4,6 +4,16 @@
 
 This is a WXT browser extension project using Bun, React, TypeScript, Tailwind CSS, and Supabase.
 
+## UI Theme
+
+- Every new or modified UI component must respect the shared light and dark theme defined in `tailwind.css`.
+- Use semantic Tailwind tokens such as `bg-background`, `bg-card`, `bg-primary`, `text-foreground`, `text-muted-foreground`, `text-destructive`, `text-success`, `text-warning`, `border-border`, and their foreground counterparts. Do not hardcode neutral or status colors when a semantic token exists.
+- Primary actions must use `primary` and `primary-foreground`; in dark mode this intentionally produces a light button with dark text.
+- Theme behavior is controlled by `data-theme="light"` and `data-theme="dark"`. UI rendered in content-script shadow roots must also receive the resolved theme instead of assuming a permanently dark palette.
+- Use the shared `ek-scroll` class where the component design calls for Euryka-themed scrollbars, including Sparks and Prospector result surfaces. Do not mechanically add it to every overflow container; preserve intentionally native or unobtrusive screen-level scrolling.
+- Check every changed component in both light and dark modes, including hover, focus, disabled, error, warning, success, popover, tooltip, and loading states.
+- Literal colors are acceptable only when the color carries external or data-defined meaning, such as product logos, provider branding, user/spark identity colors, page-overlay scrims, or controls that must remain visible over arbitrary third-party webpages. Keep these exceptions deliberate and localized.
+
 ## Update Policy
 
 - Prefer Bun for dependency management because this repo uses `bun.lock`.
