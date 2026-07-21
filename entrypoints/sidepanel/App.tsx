@@ -434,10 +434,6 @@ function SidePanel() {
                 wsId: selectedWorkspaceId,
                 brandId: selectedBrandId,
                 projectId: selectedProjectId,
-                onBack: () => {
-                  setProspectorResult(null);
-                  setShowSparkResult(false);
-                },
               }}
               sparkResult={sparkResult}
               sparkResultProps={{

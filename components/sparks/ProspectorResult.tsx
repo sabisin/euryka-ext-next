@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, ExternalLink, User } from "lucide-react";
+import { Building2, ExternalLink, User } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createLinkedInContact } from "../../lib/api";
 import { fetchAndStoreToken, getValidToken } from "../../lib/auth";
@@ -14,7 +14,6 @@ interface Props {
   wsId: string | null;
   brandId?: string | null;
   projectId?: string | null;
-  onBack: () => void;
 }
 
 type SubmitProfile = LinkedInRelatedPage & {
@@ -46,7 +45,6 @@ export function ProspectorResult({
   wsId,
   brandId,
   projectId,
-  onBack,
 }: Props) {
   const [profiles, setProfiles] = useState<SubmitProfile[]>(() => normalizeProfiles(prospect));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -157,33 +155,36 @@ export function ProspectorResult({
   };
 
   const sourceHost = getHostname(sourceUrl);
+  const relatedPageCount = prospect.relatedPages.length;
+  const detailNotes = prospect.notes.filter((note) => !isRelatedPageSummary(note));
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
-        <Button variant="icon" size="icon-md" onClick={onBack} disabled={isLoading || isSubmitting}>
-          <ArrowLeft size={15} />
-        </Button>
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
-          style={{ backgroundColor: spark.color }}
-        >
-          <IconWrapper name={spark.icon} color="white" size={16} />
-        </div>
-        <span className="truncate text-sm font-medium text-foreground">{spark.title}</span>
-        {sourceUrl && sourceHost && (
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="min-w-0 truncate text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground/70"
+      <div className="shrink-0 bg-background px-4 py-4 text-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+            style={{ backgroundColor: spark.color }}
           >
-            Source: {sourceHost}
-          </a>
-        )}
+            <IconWrapper name={spark.icon} color="white" size={16} />
+          </div>
+
+          <span className="truncate text-sm text-foreground/70">{spark.title}</span>
+
+          {sourceUrl && sourceHost && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 truncate text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground/70"
+            >
+              Source: {sourceHost}
+            </a>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="ek-scroll flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
           <div className="flex flex-col gap-2">
             <div className="h-5 w-40 rounded bg-muted animate-pulse" />
@@ -199,11 +200,14 @@ export function ProspectorResult({
               <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
                 {toEntityLabel(prospect.entityType)}
               </span>
+              <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {relatedPageCount} related {relatedPageCount === 1 ? "page" : "pages"}
+              </span>
             </div>
 
-            {prospect.notes.length > 0 && (
+            {detailNotes.length > 0 && (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                {prospect.notes.map((note) => (
+                {detailNotes.map((note) => (
                   <p key={note}>{note}</p>
                 ))}
               </div>
@@ -263,7 +267,7 @@ export function ProspectorResult({
                           disabled={profile.isPrimary}
                           onChange={() => toggleProfile(profile.url)}
                           aria-label={`Select ${profile.name}`}
-                          className="h-4 w-4 shrink-0"
+                          className="h-4 w-4 shrink-0 accent-primary"
                         />
                       </div>
                     );
@@ -281,7 +285,7 @@ export function ProspectorResult({
         <div className="sticky bottom-0 border-t border-border bg-background px-4 py-3">
           {feedback && (
             <div
-              className={`mb-2 text-sm ${feedback.kind === "error" ? "text-red-600" : "text-amber-600"}`}
+              className={`mb-2 text-sm ${feedback.kind === "error" ? "text-destructive" : "text-warning"}`}
             >
               <p>{feedback.message}</p>
               {feedback.failedUrls.length > 0 && (
@@ -427,6 +431,13 @@ function toEntityLabel(entityType: string) {
   if (entityType === "company") return "Company";
   if (entityType === "discovery") return "Discovery page";
   return "Unsupported";
+}
+
+function isRelatedPageSummary(note: string) {
+  return (
+    /^Found \d+ related LinkedIn pages?\.$/.test(note) ||
+    note === "No related LinkedIn person/company links were found in the scanned content."
+  );
 }
 
 function getHostname(url: string | null | undefined) {
