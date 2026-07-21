@@ -63,7 +63,7 @@ export function SparksResult({ result, sessionId, sourceUrl, spark, wsId }: Prop
         )}
       </div>
 
-      <MarkdownScrollArea className="px-4 py-4">
+      <MarkdownScrollArea nativeScrollbar className="px-4 py-4">
         <AnimatedMarkdown content={result} />
       </MarkdownScrollArea>
 
