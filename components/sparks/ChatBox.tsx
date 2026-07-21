@@ -2,7 +2,7 @@ import { FileText, Highlighter, KeyRound, Sparkles, TriangleAlert } from "lucide
 import { useState } from "react";
 import ekIconLight from "../../assets/logo-remade-black-red.svg";
 import ekIconDark from "../../assets/logo-remade-red-white.svg";
-import { useTheme } from "../../hooks/use-theme";
+import { useTheme } from "../../hooks/use-resolved-theme";
 import type { ChatMode } from "../../lib/types";
 import { PromptInput, PromptInputToolButton } from "../shared/PromptInput";
 
@@ -121,7 +121,7 @@ export function ChatBox({
 
       {contextStatus && (
         <p
-          className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+          className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning"
           title={contextStatusTitle ?? undefined}
           aria-live="polite"
         >
@@ -158,11 +158,7 @@ function ProviderBadge({ label }: { label: string }) {
 }
 
 function ContextCount({ value, warning }: { value: number; warning: boolean }) {
-  return (
-    <span className={warning ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground/80"}>
-      {value}
-    </span>
-  );
+  return <span className={warning ? "text-warning" : "text-muted-foreground/80"}>{value}</span>;
 }
 
 function getProviderTooltip(label: string): string {

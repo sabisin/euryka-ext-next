@@ -1,6 +1,15 @@
 import { useRef, useState } from "react";
 import { formatDistanceToNow, isValid } from "date-fns";
-import { ExternalLink, GripVertical, ImageIcon, Link, MoreHorizontal, Play, Trash2, Type } from "lucide-react";
+import {
+  ExternalLink,
+  GripVertical,
+  ImageIcon,
+  Link,
+  MoreHorizontal,
+  Play,
+  Trash2,
+  Type,
+} from "lucide-react";
 import type { Collection, CollectionItem, CollectionItemType } from "../../lib/types";
 import { Button } from "../shared/Button";
 
@@ -14,15 +23,23 @@ interface Props {
 
 function TypeIcon({ type }: { type: CollectionItemType }) {
   switch (type) {
-    case "text":  return <Type size={12} />;
-    case "image": return <ImageIcon size={12} />;
-    case "video": return <Play size={12} />;
-    default:      return <Link size={12} />;
+    case "text":
+      return <Type size={12} />;
+    case "image":
+      return <ImageIcon size={12} />;
+    case "video":
+      return <Play size={12} />;
+    default:
+      return <Link size={12} />;
   }
 }
 
 function domain(url: string) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 const CLICK_DRAG_THRESHOLD = 6;
@@ -78,7 +95,10 @@ export function CollectionItemCard({ item, collections, onDelete, onMove, onOpen
       className={`group relative flex w-full cursor-grab items-center gap-3 rounded-md bg-card/70 px-3 py-2.5 text-left transition-all duration-150 hover:-translate-y-px hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:translate-y-0 active:scale-[0.998] active:cursor-grabbing active:bg-muted/60 ${dragging ? "opacity-40" : ""}`}
     >
       {/* Drag handle */}
-      <GripVertical size={12} className="flex-shrink-0 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
+      <GripVertical
+        size={12}
+        className="flex-shrink-0 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100"
+      />
 
       {/* Type icon or thumbnail */}
       {item.type === "image" && item.thumbnail ? (
@@ -139,7 +159,10 @@ export function CollectionItemCard({ item, collections, onDelete, onMove, onOpen
                       key={c.id}
                       variant="ghost"
                       size="sm"
-                      onClick={() => { setMenuOpen(false); onMove(item.id, c.id); }}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onMove(item.id, c.id);
+                      }}
                       className="w-full justify-start text-foreground/80"
                     >
                       {c.emoji && <span>{c.emoji}</span>}
@@ -153,8 +176,11 @@ export function CollectionItemCard({ item, collections, onDelete, onMove, onOpen
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => { setMenuOpen(false); onDelete(item.id); }}
-                className="w-full justify-start text-red-400"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete(item.id);
+                }}
+                className="w-full justify-start text-destructive"
               >
                 <Trash2 size={12} />
                 Delete

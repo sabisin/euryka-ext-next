@@ -2,13 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { forwardRef } from "react";
 import { cn } from "../../lib/utils";
 
-export type ButtonVariant =
-  | "primary"
-  | "secondary"
-  | "outline"
-  | "ghost"
-  | "destructive"
-  | "icon";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "icon";
 
 export type ButtonSize = "sm" | "md" | "lg" | "icon-sm" | "icon-md" | "icon-lg";
 
@@ -18,7 +12,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const baseClasses =
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-all active:scale-95 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 disabled:active:scale-100";
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 disabled:active:scale-100";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
@@ -27,7 +21,7 @@ const variantClasses: Record<ButtonVariant, string> = {
     "border border-border bg-background text-foreground hover:border-ring/50 hover:bg-accent hover:text-accent-foreground active:bg-accent/70",
   ghost: "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/70",
   destructive:
-    "text-red-500 hover:bg-red-500/10 hover:text-red-500 active:bg-red-500/20",
+    "text-destructive hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20",
   icon: "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/70",
 };
 
@@ -49,7 +43,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       type = "button",
       ...props
     },
-    ref,
+    ref
   ) => (
     <button
       ref={ref}
@@ -57,7 +51,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className={cn(baseClasses, variantClasses[variant], sizeClasses[size], className)}
       {...props}
     />
-  ),
+  )
 );
 
 Button.displayName = "Button";

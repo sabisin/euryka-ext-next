@@ -1,58 +1,33 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { useStorageItem } from "./use-storage-item";
+import { useEffect } from "react";
 import { userPrefs } from "../lib/storage";
+import {
+  readCachedThemePreference,
+  ResolvedThemeProvider,
+  THEME_PREFERENCE_CACHE_KEY,
+} from "./use-resolved-theme";
+import { useStorageItem } from "./use-storage-item";
 
-type ResolvedTheme = "dark" | "light";
-
-const ThemeContext = createContext<ResolvedTheme>("dark");
-
-export function useTheme(): ResolvedTheme {
-  return useContext(ThemeContext);
-}
-
-interface Props {
+interface ThemeProviderProps {
   children: React.ReactNode;
 }
 
-/**
- * Reads theme preference from storage, resolves "system" via matchMedia,
- * applies `data-theme` to `document.documentElement`, and exposes the
- * resolved value via ThemeContext so nested components can read it.
- */
-export function ThemeProvider({ children }: Props) {
+/** Reads the stored preference and applies the resolved theme to the side panel document. */
+export function ThemeProvider({ children }: ThemeProviderProps) {
   const [prefs] = useStorageItem(userPrefs);
-  const preference = prefs?.theme ?? "system";
-  const [resolved, setResolved] = useState<ResolvedTheme>("dark");
+  const preference = prefs ? (prefs.theme ?? "system") : readCachedThemePreference();
 
   useEffect(() => {
-    if (preference === "dark") {
-      setResolved("dark");
-      return;
+    if (!prefs) return;
+    try {
+      localStorage.setItem(THEME_PREFERENCE_CACHE_KEY, prefs.theme ?? "system");
+    } catch {
+      // The cache is only a pre-render optimization; extension storage remains authoritative.
     }
-    if (preference === "light") {
-      setResolved("light");
-      return;
-    }
-
-    // "system" — follow the OS preference and watch for changes
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    setResolved(mq.matches ? "dark" : "light");
-
-    const handler = (e: MediaQueryListEvent) =>
-      setResolved(e.matches ? "dark" : "light");
-
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [preference]);
-
-  // Apply the resolved theme as a data attribute on the document root
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", resolved);
-  }, [resolved]);
+  }, [prefs]);
 
   return (
-    <ThemeContext value={resolved}>
+    <ResolvedThemeProvider preference={preference} applyToDocumentRoot>
       {children}
-    </ThemeContext>
+    </ResolvedThemeProvider>
   );
 }

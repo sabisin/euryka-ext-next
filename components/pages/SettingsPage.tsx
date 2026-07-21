@@ -83,10 +83,10 @@ export function SettingsPage({
               showFloatingButton: !current?.showFloatingButton,
             }))
           }
-          className={`inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${prefs?.showFloatingButton ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border dark:bg-zinc-200 dark:ring-zinc-400"}`}
+          className={`inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${prefs?.showFloatingButton ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border"}`}
         >
           <span
-            className={`h-5 w-5 rounded-full shadow-sm ring-1 transition-transform ${prefs?.showFloatingButton ? "translate-x-4 bg-background ring-border" : "translate-x-0 bg-white ring-black/10 dark:bg-zinc-500 dark:ring-zinc-600"}`}
+            className={`h-5 w-5 rounded-full shadow-sm ring-1 transition-transform ${prefs?.showFloatingButton ? "translate-x-4 bg-primary-foreground ring-primary-foreground/20" : "translate-x-0 bg-muted-foreground ring-border"}`}
           />
         </button>
       </div>

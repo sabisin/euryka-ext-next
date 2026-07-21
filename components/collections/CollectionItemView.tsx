@@ -152,7 +152,7 @@ export function CollectionItemView({ itemId, onBack }: Props) {
                 title={saved ? "Saved" : "Save comments"}
                 onClick={() => void save()}
                 disabled={saved}
-                className={saved ? "text-green-400" : undefined}
+                className={saved ? "text-success" : undefined}
               >
                 {saved ? <Check size={12} /> : <Save size={12} />}
               </Button>

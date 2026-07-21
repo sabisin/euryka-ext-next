@@ -16,12 +16,13 @@ const GRIP_ICON_SIZE = 14;
 
 interface Props {
   logo: string;
+  prefs: UserPrefs;
+  onPrefsChange: (prefs: UserPrefs) => void;
 }
 
 const clamp = (v: number) => Math.max(MIN_Y_PERCENT, Math.min(MAX_Y_PERCENT, v));
 
-export function DraggableButton({ logo }: Props) {
-  const [prefs, setPrefs] = useState<UserPrefs | null>(null);
+export function DraggableButton({ logo, prefs, onPrefsChange }: Props) {
   const [hovered, setHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [logoLoaded, setLogoLoaded] = useState(false);
@@ -33,30 +34,6 @@ export function DraggableButton({ logo }: Props) {
   const spark: Spark | null = prefs?.lastUsedSpark ?? null;
   const sparkBg = spark?.color ? lightenHex(spark.color, 0.7) : "#FF7074";
   const buttonY = clamp(prefs?.actionButtonY ?? DEFAULT_POSITION);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshPrefs = async () => {
-      try {
-        const nextPrefs = await sendMessage("getUserPrefs", undefined);
-        if (!cancelled) {
-          setPrefs((current) =>
-            JSON.stringify(current) === JSON.stringify(nextPrefs) ? current : nextPrefs,
-          );
-        }
-      } catch {
-        // Extension context may be unavailable on restricted pages.
-      }
-    };
-
-    void refreshPrefs();
-    const interval = window.setInterval(() => void refreshPrefs(), 1_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
 
   useEffect(() => {
     if (!wrapperRef.current) return;
@@ -87,7 +64,7 @@ export function DraggableButton({ logo }: Props) {
       const pct = clamp((rect.top + rect.height / 2) / window.innerHeight);
       try {
         const nextPrefs = await sendMessage("updateUserPrefs", { actionButtonY: pct });
-        setPrefs(nextPrefs);
+        onPrefsChange(nextPrefs);
       } catch {
         // Extension context invalidated.
       }
@@ -99,7 +76,7 @@ export function DraggableButton({ logo }: Props) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, []);
+  }, [onPrefsChange]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!wrapperRef.current) return;
@@ -125,8 +102,7 @@ export function DraggableButton({ logo }: Props) {
   if (prefs?.actionButtonY === undefined) return null;
 
   const expanded = hovered || isDragging;
-  const dynamicHeight =
-    (expanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT) + (spark ? 32 : 0);
+  const dynamicHeight = (expanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT) + (spark ? 32 : 0);
 
   return (
     <div
@@ -137,7 +113,7 @@ export function DraggableButton({ logo }: Props) {
       role="button"
       tabIndex={0}
       aria-label="Euryka"
-      className={`pointer-events-auto fixed right-0 z-[200] flex flex-col items-center justify-center overflow-hidden rounded-l-xl bg-[#2c2c2c] shadow-md transition-[height] duration-200 ease-linear ${
+      className={`pointer-events-auto fixed right-0 z-[200] flex flex-col items-center justify-center overflow-hidden rounded-l-xl border border-border bg-background text-foreground shadow-md transition-[height] duration-200 ease-linear ${
         isDragging ? "cursor-grabbing" : "cursor-grab"
       }`}
       style={{
@@ -158,11 +134,7 @@ export function DraggableButton({ logo }: Props) {
                 style={{ backgroundColor: sparkBg }}
                 className="flex h-[24px] w-[24px] flex-shrink-0 cursor-pointer items-center justify-center rounded-[4px] transition-opacity duration-200 hover:opacity-60"
               >
-                <IconWrapper
-                  name={spark.icon}
-                  color={spark.color ?? "#FF7074"}
-                  size={15}
-                />
+                <IconWrapper name={spark.icon} color={spark.color ?? "#FF7074"} size={15} />
               </button>
             </Tooltip>
           )}
@@ -187,7 +159,7 @@ export function DraggableButton({ logo }: Props) {
                   className={`h-[24px] w-[24px] ${logoLoaded ? "" : "opacity-50"}`}
                 />
               ) : (
-                <span className="text-[14px] font-bold text-white">E</span>
+                <span className="text-[14px] font-bold text-foreground">E</span>
               )}
             </button>
           </Tooltip>
@@ -203,7 +175,7 @@ export function DraggableButton({ logo }: Props) {
               : "pointer-events-none h-0 translate-y-1 scale-90 opacity-0"
           }`}
         >
-          <GripHorizontal size={GRIP_ICON_SIZE} className="text-zinc-500" />
+          <GripHorizontal size={GRIP_ICON_SIZE} className="text-muted-foreground" />
         </span>
       </div>
     </div>

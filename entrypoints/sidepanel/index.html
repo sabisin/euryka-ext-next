@@ -6,7 +6,25 @@
     <title>Euryka</title>
     <style>
       /* Prevent a flash before the theme tokens load. */
-      html, body { margin: 0; background-color: oklch(0.129 0.042 264.695); }
+      html {
+        --initial-background: oklch(1 0 0);
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          --initial-background: oklch(0.129 0.042 264.695);
+        }
+      }
+      html[data-theme="light"] {
+        --initial-background: oklch(1 0 0);
+      }
+      html[data-theme="dark"] {
+        --initial-background: oklch(0.129 0.042 264.695);
+      }
+      html,
+      body {
+        margin: 0;
+        background-color: var(--initial-background);
+      }
     </style>
   </head>
   <body>

@@ -6,6 +6,7 @@ import { MarkdownAnnotationEditor } from "../../components/annotations/MarkdownA
 import { Button } from "../../components/shared/Button";
 import { useAnnotationAnchors } from "../../hooks/use-annotation-anchors";
 import { useAnnotationMarkerPositioning } from "../../hooks/use-annotation-marker-positioning";
+import { useTheme } from "../../hooks/use-resolved-theme";
 import {
   type AnnotationContextPoint,
   captureAnnotationContextPoint,
@@ -13,10 +14,8 @@ import {
 import { type Annotation, firestoreTimestampToMs } from "../../lib/annotations-api";
 import { DEBUG, debugLog } from "../../lib/debug";
 import { onMessage, sendMessage } from "../../lib/messaging";
-import type { UserIdentity, UserPrefs } from "../../lib/types";
+import type { UserIdentity } from "../../lib/types";
 import { identityColor } from "../../lib/utils";
-
-type ResolvedTheme = "dark" | "light";
 
 const MARKER_SIZE = 32;
 const COMPOSER_WIDTH = 320;
@@ -24,6 +23,8 @@ const COMPOSER_MARKER_GAP = 4;
 const ANNOTATION_UPDATED_EVENT = "annotationUpdated";
 const ANNOTATION_DELETED_EVENT = "annotationDeleted";
 const TOGGLE_ANNOTATIONS_SHORTCUT = "a";
+// Identity fallback stored with annotations when no user label is available.
+const DEFAULT_ANNOTATION_COLOR = "#18181b";
 
 const debugAnnotations = debugLog("[Euryka annotations]");
 
@@ -47,9 +48,13 @@ function isToggleAnnotationsShortcut(event: KeyboardEvent) {
   );
 }
 
-export function AnnotationLayer() {
+interface AnnotationLayerProps {
+  annotationsHidden?: boolean;
+}
+
+export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
+  const theme = useTheme();
   const [hidden, setHidden] = useState(false);
-  const [theme, setTheme] = useState<ResolvedTheme>("dark");
   const [currentUser, setCurrentUser] = useState<UserIdentity>({
     label: null,
     avatarUrl: null,
@@ -124,42 +129,8 @@ export function AnnotationLayer() {
   }, [annotations]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const refreshPrefs = async () => {
-      try {
-        const prefs = (await sendMessage("getUserPrefs", undefined)) as UserPrefs | undefined;
-        if (cancelled) return;
-        setHidden((current) => {
-          const next = prefs?.annotationsHidden ?? false;
-          return current === next ? current : next;
-        });
-        if (prefs?.theme === "dark" || prefs?.theme === "light") {
-          const nextTheme = prefs.theme;
-          setTheme((current) => (current === nextTheme ? current : nextTheme));
-        } else {
-          const nextTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
-          setTheme((current) => (current === nextTheme ? current : nextTheme));
-        }
-      } catch (error) {
-        debugAnnotations("Failed to load user preferences", error);
-      }
-    };
-
-    void refreshPrefs();
-    const interval = window.setInterval(() => void refreshPrefs(), 1_000);
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleSystemTheme = () => void refreshPrefs();
-    media.addEventListener("change", handleSystemTheme);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      media.removeEventListener("change", handleSystemTheme);
-    };
-  }, []);
+    if (annotationsHidden !== undefined) setHidden(annotationsHidden);
+  }, [annotationsHidden]);
 
   useEffect(() => {
     let cancelled = false;
@@ -296,7 +267,7 @@ export function AnnotationLayer() {
       try {
         const point = lastContextMenuPoint.current ?? getViewportCenterPoint();
         const createdBy = (await sendMessage("getCurrentUser", undefined)).label ?? undefined;
-        const color = createdBy ? identityColor(createdBy) : "#18181b";
+        const color = createdBy ? identityColor(createdBy) : DEFAULT_ANNOTATION_COLOR;
         const response = await sendMessage("createAnnotation", {
           targetUrl: getCurrentTargetUrl(),
           targetTitle: document.title || undefined,
@@ -412,15 +383,11 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Open annotation"
               onClick={() => openEditor(annotation)}
-              className="flex h-[32px] w-[32px] cursor-pointer select-none items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105"
-              style={{ backgroundColor: "#18181b" }}
+              className="flex h-[32px] w-[32px] cursor-pointer select-none items-center justify-center rounded-full bg-annotation-marker shadow-lg transition-transform hover:scale-105"
             >
               <img src={logo} alt="" draggable={false} className="h-[18px] w-[18px]" />
               {annotations.length > 1 && markerNumber != null && (
-                <span
-                  className="absolute -bottom-[4px] -right-[4px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full border-[1.5px] border-white px-[4px] text-[9px] font-bold leading-none text-white shadow"
-                  style={{ backgroundColor: "#18181b" }}
-                >
+                <span className="absolute -bottom-[4px] -right-[4px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full border-[1.5px] border-annotation-marker-foreground bg-annotation-marker px-[4px] text-[9px] font-bold leading-none text-annotation-marker-foreground shadow">
                   {markerNumber}
                 </span>
               )}
@@ -430,8 +397,7 @@ export function AnnotationLayer() {
               type="button"
               aria-label="Remove annotation"
               onClick={() => removeAnnotation(annotation)}
-              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-zinc-950 p-0 leading-none text-zinc-950 opacity-0 shadow transition-opacity hover:bg-white focus-visible:opacity-100 group-hover:opacity-100"
-              style={{ backgroundColor: "#f4f4f5" }}
+              className="absolute -right-[4px] -top-[4px] z-10 flex h-[16px] w-[16px] cursor-pointer items-center justify-center rounded-full border border-annotation-marker bg-annotation-marker-foreground p-0 leading-none text-annotation-marker opacity-0 shadow transition-opacity hover:bg-annotation-marker-foreground focus-visible:opacity-100 group-hover:opacity-100"
             >
               <X size={11} className="block h-[11px] w-[11px] shrink-0" />
             </button>

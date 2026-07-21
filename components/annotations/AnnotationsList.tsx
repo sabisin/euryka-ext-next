@@ -418,7 +418,7 @@ function AnnotationListItems({
                   className="text-[10px]"
                 />
                 {annotationCount > 1 && markerNumber != null && (
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-card bg-zinc-950 px-0.5 text-[8px] font-bold leading-none text-white">
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-card bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground">
                     {markerNumber}
                   </span>
                 )}

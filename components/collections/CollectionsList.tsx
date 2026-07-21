@@ -621,7 +621,7 @@ function EmojiPickerPopover({
                 <EmojiPicker.Search
                   autoFocus
                   placeholder="Search emoji"
-                  className="h-7 min-w-0 flex-1 rounded border border-border bg-card px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary"
+                  className="h-7 min-w-0 flex-1 rounded border border-border bg-card px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
                 />
               </div>
               <EmojiPicker.Viewport className="ek-scroll h-56 overflow-y-auto">
@@ -764,7 +764,7 @@ function CollectionSharePopover({
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="colleague@company.com"
-                  className="h-8 flex-1 rounded border border-border bg-card px-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary"
+                  className="h-8 flex-1 rounded border border-border bg-card px-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
                 />
                 <Button
                   variant="primary"

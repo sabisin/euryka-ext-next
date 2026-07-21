@@ -3,10 +3,9 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 interface Props {
   children: ReactNode;
   className?: string;
-  nativeScrollbar?: boolean;
 }
 
-export function MarkdownScrollArea({ children, className = "", nativeScrollbar = false }: Props) {
+export function MarkdownScrollArea({ children, className = "" }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [showBlur, setShowBlur] = useState(false);
@@ -28,11 +27,7 @@ export function MarkdownScrollArea({ children, className = "", nativeScrollbar =
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div
-        ref={viewportRef}
-        className={`${nativeScrollbar ? "" : "ek-scroll "}h-full overflow-y-auto`}
-        onScroll={updateBlur}
-      >
+      <div ref={viewportRef} className="ek-scroll h-full overflow-y-auto" onScroll={updateBlur}>
         <div ref={contentRef} className={className}>
           {children}
         </div>

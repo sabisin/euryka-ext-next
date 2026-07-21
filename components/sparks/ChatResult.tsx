@@ -94,7 +94,7 @@ export function ChatResult({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="ek-scroll flex-1 overflow-y-auto px-4 py-4">
         <div className="flex flex-col gap-4">
           {messages.map((message) => (
             <div
@@ -125,7 +125,7 @@ export function ChatResult({
           )}
 
           {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-red-500">
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
             </div>
           )}

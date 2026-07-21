@@ -56,7 +56,7 @@ export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading, onBa
         ) : result ? (
           <AnimatedMarkdown content={result} />
         ) : (
-          <p className="text-sm text-red-400">
+          <p className="text-sm text-destructive">
             We couldn't process that image. Please retry shortly.
           </p>
         )}

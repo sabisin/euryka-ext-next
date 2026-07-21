@@ -11,7 +11,9 @@ export function MediaPreview({ url, alt = "Preview", className = "" }: Props) {
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center rounded-lg bg-zinc-800 text-xs text-zinc-500 ${className}`}>
+      <div
+        className={`flex items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground ${className}`}
+      >
         Failed to load image
       </div>
     );

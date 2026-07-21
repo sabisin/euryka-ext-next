@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "../../tailwind.css";
-import logo from "../../assets/logo-remade-red-white.svg";
+import logoLight from "../../assets/logo-remade-black-red.svg";
+import logoDark from "../../assets/logo-remade-red-white.svg";
+import { ResolvedThemeProvider, useTheme } from "../../hooks/use-resolved-theme";
 import { sendMessage } from "../../lib/messaging";
 import type { UserPrefs } from "../../lib/types";
 import { AnnotationLayer } from "./AnnotationLayer";
@@ -9,11 +11,6 @@ import { DraggableButton } from "./DraggableButton";
 
 const CONTENT_UI_HOST_CSS = `
   :host {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: 9999999 !important;
     pointer-events: none !important;
     overflow: visible !important;
     display: block !important;
@@ -48,10 +45,31 @@ function ContentUiApp() {
   }, []);
 
   return (
-    <>
-      <AnnotationLayer />
-      {prefs?.showFloatingButton && <DraggableButton logo={logo} />}
-    </>
+    <ResolvedThemeProvider preference={prefs?.theme}>
+      <ThemedContentUi prefs={prefs} onPrefsChange={setPrefs} />
+    </ResolvedThemeProvider>
+  );
+}
+
+interface ThemedContentUiProps {
+  prefs: UserPrefs | null;
+  onPrefsChange: (prefs: UserPrefs) => void;
+}
+
+function ThemedContentUi({ prefs, onPrefsChange }: ThemedContentUiProps) {
+  const theme = useTheme();
+
+  return (
+    <div data-theme={theme} className="contents">
+      <AnnotationLayer annotationsHidden={prefs?.annotationsHidden} />
+      {prefs?.showFloatingButton && (
+        <DraggableButton
+          logo={theme === "dark" ? logoDark : logoLight}
+          prefs={prefs}
+          onPrefsChange={onPrefsChange}
+        />
+      )}
+    </div>
   );
 }
 
@@ -66,12 +84,12 @@ export default defineContentScript({
 
     const ui = await createShadowRootUi(ctx, {
       name: "euryka-content-ui",
-      // WXT resets :host with `all: initial !important`; define host layout in
-      // the same shadow cascade so fixed overlays stay above site-owned layers.
+      // Keep the host transparent and non-interactive. WXT's overlay mode
+      // supplies a zero-sized anchor so the extension never covers the page.
       css: CONTENT_UI_HOST_CSS,
-      // inline + anchor body appends the shadow host to <body>
-      // the DraggableButton inside uses position:fixed which works correctly
-      position: "inline",
+      position: "overlay",
+      alignment: "top-left",
+      zIndex: 9_999_999,
       anchor: "body",
       append: "last",
       onMount(container) {

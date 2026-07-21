@@ -162,7 +162,7 @@ export function ChromePromptTestBox({ tabId }: Props) {
             checked={includePageContent}
             onChange={(event) => handlePageContentToggle(event.target.checked)}
             disabled={isRunning || isRefreshingContext}
-            className="h-3.5 w-3.5 rounded border-border"
+            className="h-3.5 w-3.5 accent-primary"
           />
           Page content
         </label>
@@ -172,7 +172,7 @@ export function ChromePromptTestBox({ tabId }: Props) {
             checked={includeSelectedText}
             onChange={(event) => handleSelectedTextToggle(event.target.checked)}
             disabled={isRunning || isRefreshingContext}
-            className="h-3.5 w-3.5 rounded border-border"
+            className="h-3.5 w-3.5 accent-primary"
           />
           Highlighted text
         </label>

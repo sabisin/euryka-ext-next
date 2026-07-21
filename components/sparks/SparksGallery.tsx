@@ -117,7 +117,11 @@ export function SparksGallery({
       </div>
 
       <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} className="h-full overflow-y-auto" onScroll={updateScrollBlur}>
+        <div
+          ref={scrollRef}
+          className="ek-scroll h-full overflow-y-auto"
+          onScroll={updateScrollBlur}
+        >
           <div className="flex min-h-full flex-col gap-6 px-4 pb-6 pt-2">
             {isLoading && (
               <div className="flex flex-col gap-3">

@@ -25,26 +25,22 @@ export function Tooltip({ label, sublabel, children }: Props) {
   };
 
   return (
-    <div
-      className="relative flex items-center"
-      onMouseEnter={show}
-      onMouseLeave={hide}
-    >
+    <div className="relative flex items-center" onMouseEnter={show} onMouseLeave={hide}>
       {children}
 
       {visible && (
         <div
           role="tooltip"
-          className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 z-10 flex flex-col gap-0.5 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 shadow-xl"
+          className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 -translate-y-1/2 z-10 flex flex-col gap-0.5 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-popover-foreground shadow-xl"
         >
-          <span className="text-xs font-medium text-zinc-100">{label}</span>
+          <span className="text-xs font-medium">{label}</span>
           {sublabel && (
-            <span className="text-[10px] leading-tight text-zinc-400">{sublabel}</span>
+            <span className="text-[10px] leading-tight text-muted-foreground">{sublabel}</span>
           )}
           {/* Arrow pointing right */}
           <span
             aria-hidden
-            className="absolute right-[-5px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rotate-45 rounded-br-sm border-b border-r border-zinc-700 bg-zinc-900"
+            className="absolute right-[-5px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rotate-45 rounded-br-sm border-b border-r border-border bg-popover"
           />
         </div>
       )}

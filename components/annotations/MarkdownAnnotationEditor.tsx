@@ -222,7 +222,7 @@ export function MarkdownAnnotationEditor({
           title={saved ? "Saved" : "Save"}
           onClick={save}
           disabled={saved || !editor}
-          className={saved ? "text-green-400" : undefined}
+          className={saved ? "text-success" : undefined}
         >
           {saved ? <Check size={12} /> : <Save size={12} />}
         </Button>
