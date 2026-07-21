@@ -61,6 +61,12 @@
   font-synthesis: none;
 }
 
+.ek-login-hero {
+  /* Match Next's Inter Light rendering while retaining the reference's font-light utility. */
+  --font-weight-light: 350;
+  font-optical-sizing: auto;
+}
+
 :root,
 [data-theme="light"] {
   /* Keeps native form controls, autofill, and selection in step with the token palette. */
