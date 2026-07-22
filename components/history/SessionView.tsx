@@ -1,6 +1,7 @@
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { useStorageItem } from "../../hooks/use-storage-item";
 import { getSessionDisplay } from "../../lib/session-display";
+import { buildRemixUrl } from "../../lib/remix-url";
 import { sparkCacheStorage } from "../../lib/storage";
 import type { Session } from "../../lib/types";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
@@ -40,10 +41,10 @@ export function SessionHeaderTitle({ session, onBack }: HeaderTitleProps) {
 
 export function SessionView({ session, wsId }: Props) {
   const [sparkCache] = useStorageItem(sparkCacheStorage);
-  const { imageUrl, isImageAnalysis } = getSessionDisplay(session, sparkCache);
+  const { imageUrl, isImageSession } = getSessionDisplay(session, sparkCache);
   const openUrl =
-    wsId && isImageAnalysis
-      ? `${BASE_URL}/ws/${wsId}?ext_session=${session.id}`
+    isImageSession
+      ? buildRemixUrl(BASE_URL, wsId, session.id)
       : wsId
         ? `${BASE_URL}/api/ws/${wsId}/extension/sessions/${session.id}/thread`
         : undefined;
@@ -58,9 +59,9 @@ export function SessionView({ session, wsId }: Props) {
       <StickyActionBar
         content={session.content}
         openUrl={openUrl}
-        openLabel={isImageAnalysis ? "Remix in Euryka" : undefined}
-        openTitle={isImageAnalysis ? "Remix" : undefined}
-        openIcon={isImageAnalysis ? Sparkles : undefined}
+        openLabel={isImageSession ? "Remix in Euryka" : undefined}
+        openTitle={isImageSession ? "Remix" : undefined}
+        openIcon={isImageSession ? Sparkles : undefined}
       />
     </div>
   );

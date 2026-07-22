@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import { buildRemixUrl } from "../../lib/remix-url";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
 import { StickyActionBar } from "../shared/StickyActionBar";
 import { MediaPreview } from "../shared/MediaPreview";
@@ -17,8 +18,7 @@ interface Props {
 }
 
 export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading, onBack }: Props) {
-  const remixUrl =
-    wsId && sessionId ? `${BASE_URL}/ws/${wsId}?ext_session=${sessionId}` : undefined;
+  const remixUrl = buildRemixUrl(BASE_URL, wsId, sessionId);
 
   // Revoke blob URLs on unmount
   useEffect(() => {
