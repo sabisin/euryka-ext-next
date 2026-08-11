@@ -100,7 +100,9 @@ export function SparksGallery({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="progressive-blur-surface-top relative shrink-0 px-4 pb-3 pt-4">
+      <div
+        className={`${showTopBlur ? "progressive-blur-surface-top" : ""} relative shrink-0 bg-background px-4 pb-3 pt-4`}
+      >
         <div className="relative">
           <Search
             size={14}
