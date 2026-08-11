@@ -1,7 +1,8 @@
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { firestoreTimestampToMs, getAnnotation, type Annotation } from "../../lib/annotations-api";
 import { runWithTokenRetry } from "../../lib/auth";
+import { createLatestTaskQueue } from "../../lib/latest-task-queue";
 import { sendMessage } from "../../lib/messaging";
 import { Button } from "../shared/Button";
 import { MarkdownAnnotationEditor } from "./MarkdownAnnotationEditor";
@@ -84,6 +85,20 @@ export function AnnotationView({ markerId, onBack }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState(false);
+  const draftRef = useRef("");
+  const draftRevisionRef = useRef(0);
+  const draftDirtyRef = useRef(false);
+  const markerIdRef = useRef(markerId);
+  const saveQueueRef = useRef(createLatestTaskQueue());
+
+  markerIdRef.current = markerId;
+
+  const replaceDraft = useCallback((markdown: string, dirty: boolean) => {
+    draftRef.current = markdown;
+    draftRevisionRef.current += 1;
+    draftDirtyRef.current = dirty;
+    setDraft(markdown);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +107,7 @@ export function AnnotationView({ markerId, onBack }: Props) {
       .then(({ annotation }) => {
         if (cancelled) return;
         setAnnotation(annotation);
-        setDraft(annotation.note ?? "");
+        replaceDraft(annotation.note ?? "", false);
         setSaved(false);
       })
       .catch(() => {
@@ -105,15 +120,17 @@ export function AnnotationView({ markerId, onBack }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [markerId]);
+  }, [markerId, replaceDraft]);
 
   useEffect(() => {
     const handleUpdate = (event: Event) => {
       const next = (event as CustomEvent<Annotation>).detail;
       if (next.id !== markerId) return;
       setAnnotation(next);
-      setDraft(next.note ?? "");
-      setSaved(true);
+      if (!draftDirtyRef.current) {
+        replaceDraft(next.note ?? "", false);
+        setSaved(true);
+      }
     };
 
     const handleDelete = (event: Event) => {
@@ -129,17 +146,29 @@ export function AnnotationView({ markerId, onBack }: Props) {
       window.removeEventListener(ANNOTATION_UPDATED_EVENT, handleUpdate);
       window.removeEventListener(ANNOTATION_DELETED_EVENT, handleDelete);
     };
-  }, [markerId, onBack]);
+  }, [markerId, onBack, replaceDraft]);
 
-  const save = async (markdown: string) => {
+  const save = (markdown: string) => {
     if (!annotation) return;
-    const response = await sendMessage("updateAnnotation", {
-      id: annotation.id,
-      payload: { note: markdown.trim() || null },
-    });
-    setAnnotation(response.annotation);
-    setDraft(response.annotation.note ?? "");
-    setSaved(true);
+    const annotationId = annotation.id;
+    const submittedRevision = draftRevisionRef.current;
+    setSaved(false);
+    return saveQueueRef.current
+      .enqueue(async () => {
+        const response = await sendMessage("updateAnnotation", {
+          id: annotationId,
+          payload: { note: markdown.trim() || null },
+        });
+        if (markerIdRef.current !== annotationId) return;
+        setAnnotation(response.annotation);
+        if (draftRevisionRef.current === submittedRevision && draftRef.current === markdown) {
+          replaceDraft(response.annotation.note ?? "", false);
+          setSaved(true);
+        }
+      })
+      .catch(() => {
+        if (markerIdRef.current === annotationId) setSaved(false);
+      });
   };
 
   const remove = async () => {
@@ -175,7 +204,7 @@ export function AnnotationView({ markerId, onBack }: Props) {
       content={draft}
       saved={saved}
       onChange={(markdown) => {
-        setDraft(markdown);
+        replaceDraft(markdown, true);
         setSaved(false);
       }}
       onSave={save}

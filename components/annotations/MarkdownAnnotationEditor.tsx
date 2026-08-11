@@ -95,7 +95,7 @@ export function MarkdownAnnotationEditor({
   }, [editor, repairedContent]);
 
   const save = () => {
-    if (!editor) return;
+    if (!editor || saved) return;
     void onSave(editor.getMarkdown());
   };
 

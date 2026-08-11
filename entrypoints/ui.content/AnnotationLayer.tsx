@@ -14,6 +14,7 @@ import {
 import { upsertAnnotationById } from "../../lib/annotation-sync";
 import { type Annotation, firestoreTimestampToMs } from "../../lib/annotations-api";
 import { DEBUG, debugLog } from "../../lib/debug";
+import { type LatestTaskQueue, createLatestTaskQueue } from "../../lib/latest-task-queue";
 import { onMessage, sendMessage } from "../../lib/messaging";
 import type { UserIdentity } from "../../lib/types";
 import { identityColor } from "../../lib/utils";
@@ -65,12 +66,22 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [savedId, setSavedId] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
   const lastContextMenuPoint = useRef<AnnotationContextPoint | null>(null);
   const activeAnnotationIdRef = useRef<string | null>(null);
+  const noteDraftRef = useRef("");
+  const noteDraftRevisionRef = useRef(0);
+  const noteDraftDirtyRef = useRef(false);
+  const saveQueuesRef = useRef(new Map<string, LatestTaskQueue>());
   const refreshInFlightRef = useRef(false);
   const { anchors, visibility: anchorVisibility } = useAnnotationAnchors(annotations, targetUrl);
   const setMarkerElement = useAnnotationMarkerPositioning(annotations, anchors);
+
+  const replaceNoteDraft = useCallback((markdown: string, dirty: boolean) => {
+    noteDraftRef.current = markdown;
+    noteDraftRevisionRef.current += 1;
+    noteDraftDirtyRef.current = dirty;
+    setNoteDraft(markdown);
+  }, []);
 
   const refreshAnnotations = useCallback(async () => {
     if (refreshInFlightRef.current) return;
@@ -95,6 +106,12 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
       if (getCurrentTargetUrl() !== targetUrl) return;
 
       setAnnotations(results);
+      const activeAnnotation = results.find(
+        (annotation) => annotation.id === activeAnnotationIdRef.current
+      );
+      if (activeAnnotation && !noteDraftDirtyRef.current) {
+        replaceNoteDraft(activeAnnotation.note ?? "", false);
+      }
       if (DEBUG) {
         debugAnnotations(
           "Loaded annotation anchor diagnostics",
@@ -106,14 +123,14 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
         !results.some((annotation) => annotation.id === activeAnnotationIdRef.current)
       ) {
         setActiveAnnotationId(null);
-        setNoteDraft("");
+        replaceNoteDraft("", false);
       }
     } catch (error) {
       debugAnnotations("Failed to refresh annotations", error);
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, []);
+  }, [replaceNoteDraft]);
 
   useEffect(() => {
     debugAnnotations("Annotation layer mounted", {
@@ -194,13 +211,17 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
         if (!exists && next.targetUrl !== getCurrentTargetUrl()) return current;
         return upsertAnnotationById(current, next);
       });
+      if (activeAnnotationIdRef.current === next.id && !noteDraftDirtyRef.current) {
+        replaceNoteDraft(next.note ?? "", false);
+        setSavedId(next.id);
+      }
     });
 
     const cleanupDeleted = onMessage(ANNOTATION_DELETED_EVENT, ({ data }) => {
       setAnnotations((current) => current.filter((annotation) => annotation.id !== data.id));
       if (activeAnnotationIdRef.current === data.id) {
         setActiveAnnotationId(null);
-        setNoteDraft("");
+        replaceNoteDraft("", false);
       }
     });
 
@@ -208,7 +229,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
       cleanupUpdated();
       cleanupDeleted();
     };
-  }, []);
+  }, [replaceNoteDraft]);
 
   useEffect(() => {
     void refreshAnnotations();
@@ -230,7 +251,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
       setTargetUrl(nextUrl);
       setAnnotations([]);
       setActiveAnnotationId(null);
-      setNoteDraft("");
+      replaceNoteDraft("", false);
       void refreshAnnotations();
     };
     const urlInterval = window.setInterval(handleUrlChange, 1_000);
@@ -244,7 +265,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
       window.removeEventListener("popstate", handleUrlChange);
       window.removeEventListener("hashchange", handleUrlChange);
     };
-  }, [refreshAnnotations]);
+  }, [refreshAnnotations, replaceNoteDraft]);
 
   useEffect(() => {
     const captureContextMenuPoint = (event: MouseEvent) => {
@@ -299,44 +320,55 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
             returned: summarizeAnnotationSelector(response.annotation),
           });
         }
-        setNoteDraft("");
+        replaceNoteDraft("", false);
       } catch (error) {
         debugAnnotations("Failed to create annotation", error);
       }
     });
 
     return cleanup;
-  }, []);
+  }, [replaceNoteDraft]);
 
   const openEditor = (annotation: Annotation) => {
     if (activeAnnotationId === annotation.id) {
       setActiveAnnotationId(null);
-      setNoteDraft("");
+      replaceNoteDraft("", false);
     } else {
       setActiveAnnotationId(annotation.id);
-      setNoteDraft(annotation.note ?? "");
+      replaceNoteDraft(annotation.note ?? "", false);
     }
   };
 
-  const saveNote = async (annotation: Annotation, markdown = noteDraft) => {
-    if (savingId === annotation.id) return;
-    setSavingId(annotation.id);
-    setSavedId(null);
-    try {
-      const response = await sendMessage("updateAnnotation", {
-        id: annotation.id,
-        payload: { note: markdown.trim() || null },
-      });
-      setAnnotations((current) =>
-        current.map((item) => (item.id === annotation.id ? response.annotation : item))
-      );
-      setSavedId(annotation.id);
-      setTimeout(() => setSavedId(null), 2000);
-    } catch (error) {
-      debugAnnotations("Failed to save annotation note", error);
-    } finally {
-      setSavingId((current) => (current === annotation.id ? null : current));
+  const saveNote = (annotation: Annotation, markdown = noteDraft) => {
+    const submittedRevision = noteDraftRevisionRef.current;
+    let saveQueue = saveQueuesRef.current.get(annotation.id);
+    if (!saveQueue) {
+      saveQueue = createLatestTaskQueue();
+      saveQueuesRef.current.set(annotation.id, saveQueue);
     }
+    setSavedId(null);
+    return saveQueue.enqueue(async () => {
+      try {
+        const response = await sendMessage("updateAnnotation", {
+          id: annotation.id,
+          payload: { note: markdown.trim() || null },
+        });
+        setAnnotations((current) =>
+          current.map((item) => (item.id === annotation.id ? response.annotation : item))
+        );
+        if (
+          activeAnnotationIdRef.current === annotation.id &&
+          noteDraftRevisionRef.current === submittedRevision &&
+          noteDraftRef.current === markdown
+        ) {
+          replaceNoteDraft(response.annotation.note ?? "", false);
+          setSavedId(annotation.id);
+          setTimeout(() => setSavedId(null), 2000);
+        }
+      } catch (error) {
+        debugAnnotations("Failed to save annotation note", error);
+      }
+    });
   };
 
   const removeAnnotation = async (annotation: Annotation) => {
@@ -348,7 +380,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
       setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
       if (activeAnnotationId === annotation.id) {
         setActiveAnnotationId(null);
-        setNoteDraft("");
+        replaceNoteDraft("", false);
       }
     } catch (error) {
       debugAnnotations("Failed to delete annotation", error);
@@ -437,7 +469,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
                     content={noteDraft}
                     saved={isSaved}
                     onChange={(markdown) => {
-                      setNoteDraft(markdown);
+                      replaceNoteDraft(markdown, true);
                       setSavedId(null);
                     }}
                     onSave={(markdown) => saveNote(annotation, markdown)}
