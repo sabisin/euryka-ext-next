@@ -9,8 +9,10 @@ import {
   userPrefs,
 } from "../lib/storage";
 import { fetchAndStoreToken, isTokenExpired, runWithTokenRetry } from "../lib/auth";
+import { isSameAnnotationTarget } from "../lib/annotation-sync";
 import { debugLog } from "../lib/debug";
 import {
+  type AnnotationCreateResponse,
   createAnnotation,
   deleteAnnotation,
   listAnnotations,
@@ -47,6 +49,38 @@ const logCollectionSave = debugLog("[Euryka collections]");
 
 function isTrackablePageUrl(url: string | undefined): url is string {
   return Boolean(url && /^https?:\/\//i.test(url));
+}
+
+async function broadcastAnnotationUpdated(response: AnnotationCreateResponse) {
+  await Promise.allSettled([
+    sendMessage("annotationUpdated", response),
+    sendToContentScriptTabs("annotationUpdated", response, response.annotation.targetUrl),
+  ]);
+}
+
+async function broadcastAnnotationDeleted(id: string, targetUrl: string) {
+  const data = { id, targetUrl };
+  await Promise.allSettled([
+    sendMessage("annotationDeleted", data),
+    sendToContentScriptTabs("annotationDeleted", data, targetUrl),
+  ]);
+}
+
+async function sendToContentScriptTabs(
+  type: "annotationUpdated" | "annotationDeleted",
+  data: AnnotationCreateResponse | { id: string; targetUrl: string },
+  targetUrl: string
+) {
+  const tabs = await chrome.tabs.query({});
+  await Promise.allSettled(
+    tabs
+      .filter((tab) => tab.id !== undefined && isSameAnnotationTarget(tab.url, targetUrl))
+      .map((tab) => {
+        return type === "annotationUpdated"
+          ? sendMessage(type, data as AnnotationCreateResponse, tab.id as number)
+          : sendMessage(type, data as { id: string; targetUrl: string }, tab.id as number);
+      })
+  );
 }
 
 function correctInternalThreadUrl(url: string): string | null {
@@ -261,7 +295,7 @@ export default defineBackground(() => {
   onMessage("createAnnotation", ({ data }) =>
     runWithTokenRetry(async (token) => {
       const response = await createAnnotation(token, data);
-      sendMessage("annotationUpdated", response).catch(() => {});
+      await broadcastAnnotationUpdated(response);
       return response;
     })
   );
@@ -269,14 +303,14 @@ export default defineBackground(() => {
   onMessage("updateAnnotation", ({ data }) =>
     runWithTokenRetry(async (token) => {
       const response = await updateAnnotation(token, data.id, data.payload);
-      sendMessage("annotationUpdated", response).catch(() => {});
+      await broadcastAnnotationUpdated(response);
       return response;
     })
   );
 
   onMessage("deleteAnnotation", async ({ data }) => {
     await runWithTokenRetry((token) => deleteAnnotation(token, data.id));
-    sendMessage("annotationDeleted", { id: data.id }).catch(() => {});
+    await broadcastAnnotationDeleted(data.id, data.targetUrl);
   });
 
   onMessage("getUserPrefs", () => userPrefs.getValue());

@@ -11,6 +11,7 @@ import {
   type AnnotationContextPoint,
   captureAnnotationContextPoint,
 } from "../../lib/annotation-anchors";
+import { upsertAnnotationById } from "../../lib/annotation-sync";
 import { type Annotation, firestoreTimestampToMs } from "../../lib/annotations-api";
 import { DEBUG, debugLog } from "../../lib/debug";
 import { onMessage, sendMessage } from "../../lib/messaging";
@@ -189,12 +190,9 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
     const cleanupUpdated = onMessage(ANNOTATION_UPDATED_EVENT, ({ data }) => {
       const next = data.annotation;
       setAnnotations((current) => {
-        const index = current.findIndex((annotation) => annotation.id === next.id);
-        if (index < 0) {
-          if (next.targetUrl !== getCurrentTargetUrl()) return current;
-          return [...current, next];
-        }
-        return current.map((annotation) => (annotation.id === next.id ? next : annotation));
+        const exists = current.some((annotation) => annotation.id === next.id);
+        if (!exists && next.targetUrl !== getCurrentTargetUrl()) return current;
+        return upsertAnnotationById(current, next);
       });
     });
 
@@ -288,7 +286,7 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
           positionEnd: point.textOffset != null ? point.textOffset + 1 : undefined,
         });
 
-        setAnnotations((current) => [...current, response.annotation]);
+        setAnnotations((current) => upsertAnnotationById(current, response.annotation));
         if (DEBUG) {
           debugAnnotations("Created annotation", {
             id: response.annotation.id,
@@ -343,7 +341,10 @@ export function AnnotationLayer({ annotationsHidden }: AnnotationLayerProps) {
 
   const removeAnnotation = async (annotation: Annotation) => {
     try {
-      await sendMessage("deleteAnnotation", { id: annotation.id });
+      await sendMessage("deleteAnnotation", {
+        id: annotation.id,
+        targetUrl: annotation.targetUrl,
+      });
       setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
       if (activeAnnotationId === annotation.id) {
         setActiveAnnotationId(null);

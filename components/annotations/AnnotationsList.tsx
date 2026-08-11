@@ -194,7 +194,10 @@ export function AnnotationsList({ onSelectMarker }: Props) {
   const hasAny = annotations.length > 0;
 
   const deleteItem = async (annotation: Annotation) => {
-    await sendMessage("deleteAnnotation", { id: annotation.id });
+    await sendMessage("deleteAnnotation", {
+      id: annotation.id,
+      targetUrl: annotation.targetUrl,
+    });
   };
 
   const tabs: { key: Tab; label: string }[] = [

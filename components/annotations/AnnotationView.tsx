@@ -144,7 +144,10 @@ export function AnnotationView({ markerId, onBack }: Props) {
 
   const remove = async () => {
     if (!annotation) return;
-    await sendMessage("deleteAnnotation", { id: annotation.id });
+    await sendMessage("deleteAnnotation", {
+      id: annotation.id,
+      targetUrl: annotation.targetUrl,
+    });
   };
 
   if (isLoading) {

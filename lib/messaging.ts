@@ -28,9 +28,9 @@ interface ProtocolMap {
   listAnnotations(data: AnnotationListParams): AnnotationListResponse;
   createAnnotation(data: AnnotationCreateInput): AnnotationCreateResponse;
   updateAnnotation(data: { id: string; payload: AnnotationUpdateInput }): AnnotationUpdateResponse;
-  deleteAnnotation(data: { id: string }): void;
+  deleteAnnotation(data: { id: string; targetUrl: string }): void;
   annotationUpdated(data: AnnotationCreateResponse): void;
-  annotationDeleted(data: { id: string }): void;
+  annotationDeleted(data: { id: string; targetUrl: string }): void;
   getUserPrefs(): UserPrefs;
   updateUserPrefs(data: Partial<UserPrefs>): UserPrefs;
   getCurrentIdentity(): string | null;
