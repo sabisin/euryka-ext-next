@@ -22,6 +22,8 @@ export function DropzoneOverlay({ onDrop, onClose }: Props) {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    setIsHovered(false);
     try {
       const result = getDraggedImage(e.nativeEvent);
       if (!result) {
@@ -38,23 +40,34 @@ export function DropzoneOverlay({ onDrop, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setIsHovered(true);
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
       }}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose();
+        e.preventDefault();
+        const nextTarget = e.relatedTarget;
+        if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) return;
+        setIsHovered(false);
+        onClose();
       }}
+      onDragEnd={onClose}
       onDrop={handleDrop}
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
     >
       <div
         className={`flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed p-10 transition-colors ${
           isHovered ? "border-primary bg-card" : "border-border bg-card/80"
         }`}
-        onDragEnter={() => setIsHovered(true)}
-        onDragLeave={() => setIsHovered(false)}
-        onClick={(e) => e.stopPropagation()}
       >
         {error ? (
           <p className="text-sm font-medium text-destructive">{error}</p>
