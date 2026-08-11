@@ -6,7 +6,11 @@ import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { AnnotationHeaderTitle } from "../../components/annotations/AnnotationView";
 import { SessionHeaderTitle } from "../../components/history/SessionView";
-import { DropzoneOverlay } from "../../components/image/DropzoneOverlay";
+import {
+  DROP_ERROR_EXIT_DURATION_MS,
+  DropErrorToast,
+  DropzoneOverlay,
+} from "../../components/image/DropzoneOverlay";
 import { AppSidebar, NavRail } from "../../components/layout/AppSidebar";
 import { Header } from "../../components/layout/Header";
 import { LoggedOut } from "../../components/layout/LoggedOut";
@@ -55,6 +59,11 @@ const THIS_TAB_ID = (() => {
 })();
 
 function SidePanel() {
+  const [dropError, setDropError] = useState<{
+    message: string;
+    durationMs: number;
+  } | null>(null);
+  const [dropErrorExiting, setDropErrorExiting] = useState(false);
   const [auth] = useStorageItem<AuthState>(authStorage);
   const [authResolved, setAuthResolved] = useState(false);
   const [chatApiKey, setChatApiKey] = useStorageItem<string>(chatApiKeyStorage);
@@ -157,6 +166,22 @@ function SidePanel() {
     setSelectedCollectionId,
     setSelectedCollectionItemId,
   } = actions;
+
+  useEffect(() => {
+    if (!dropError) return;
+    const exitTimeoutId = window.setTimeout(
+      () => setDropErrorExiting(true),
+      Math.max(0, dropError.durationMs - DROP_ERROR_EXIT_DURATION_MS)
+    );
+    const removeTimeoutId = window.setTimeout(() => {
+      setDropError(null);
+      setDropErrorExiting(false);
+    }, dropError.durationMs);
+    return () => {
+      window.clearTimeout(exitTimeoutId);
+      window.clearTimeout(removeTimeoutId);
+    };
+  }, [dropError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -508,13 +533,20 @@ function SidePanel() {
         {isDragging && !isLoadingImage && (
           <DropzoneOverlay
             onDrop={(result) => {
+              setDropError(null);
+              setDropErrorExiting(false);
               setIsDragging(false);
               setPage("sparks");
               handleAnalyseImage(result);
             }}
             onClose={() => setIsDragging(false)}
+            onError={(message, durationMs) => {
+              setDropErrorExiting(false);
+              setDropError({ message, durationMs });
+            }}
           />
         )}
+        {dropError && <DropErrorToast message={dropError.message} exiting={dropErrorExiting} />}
       </div>
     </div>
   );
