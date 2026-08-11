@@ -68,7 +68,12 @@ export function validateDraggedImage(result: DragImageResult): void {
       throw new Error("File type not supported.");
     }
   }
-  if (result.source === "browser" && result.url && !result.isDataUrl) {
+  if (
+    result.source === "browser" &&
+    result.origin !== "html" &&
+    result.url &&
+    !result.isDataUrl
+  ) {
     if (!isImageUrl(result.url)) {
       throw new Error("Only images are allowed by URL.");
     }
