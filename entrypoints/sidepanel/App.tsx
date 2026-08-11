@@ -505,7 +505,7 @@ function SidePanel() {
           ) : null}
         </main>
 
-        {isDragging && !isLoadingImage && !selectedImageUrl && (
+        {isDragging && !isLoadingImage && (
           <DropzoneOverlay
             onDrop={(result) => {
               setIsDragging(false);

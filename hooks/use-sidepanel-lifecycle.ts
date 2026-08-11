@@ -169,6 +169,48 @@ export function useSidePanelLifecycle({
   }, [setIsDragging, setPage, setPendingAction, tabId]);
 
   useEffect(() => {
+    let localDragDepth = 0;
+
+    const handleLocalDragEnter = (event: DragEvent) => {
+      const types = event.dataTransfer?.types;
+      if (
+        types?.includes("Files") ||
+        types?.includes("text/html") ||
+        types?.includes("text/uri-list")
+      ) {
+        localDragDepth += 1;
+        setIsDragging(true);
+      }
+    };
+
+    const handleLocalDragLeave = (event: DragEvent) => {
+      if (event.relatedTarget === null) {
+        handleLocalDragEnd();
+        return;
+      }
+      if (localDragDepth === 0) return;
+      localDragDepth -= 1;
+      if (localDragDepth === 0) setIsDragging(false);
+    };
+
+    const handleLocalDragEnd = () => {
+      localDragDepth = 0;
+      setIsDragging(false);
+    };
+
+    // The side panel is a separate document from the page. Listening locally
+    // avoids relying solely on the page -> background -> panel message round trip.
+    document.addEventListener("dragenter", handleLocalDragEnter, true);
+    document.addEventListener("dragleave", handleLocalDragLeave, true);
+    document.addEventListener("dragend", handleLocalDragEnd, true);
+    return () => {
+      document.removeEventListener("dragenter", handleLocalDragEnter, true);
+      document.removeEventListener("dragleave", handleLocalDragLeave, true);
+      document.removeEventListener("dragend", handleLocalDragEnd, true);
+    };
+  }, [setIsDragging]);
+
+  useEffect(() => {
     if (!auth?.token) {
       void currentIdentityStorage.setValue(null);
       return;
