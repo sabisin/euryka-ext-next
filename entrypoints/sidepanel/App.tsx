@@ -301,6 +301,8 @@ function SidePanel() {
 
   const isChatResultView = currentPage === "sparks" && !selectedImageUrl && showChatResult;
 
+  const isImageResultView = currentPage === "sparks" && Boolean(selectedImageUrl);
+
   const isSparkResultView =
     currentPage === "sparks" &&
     !selectedImageUrl &&
@@ -317,6 +319,11 @@ function SidePanel() {
     handleStopChat();
     resetInnerViews();
     setPage("settings");
+  };
+
+  const closeImageResult = () => {
+    setSelectedImageUrl(null);
+    setImageResult(null);
   };
 
   const openCollectionItem = (item: CollectionItem) => {
@@ -366,7 +373,18 @@ function SidePanel() {
             ) : undefined
           }
           leftSlot={
-            isChatResultView ? (
+            isImageResultView ? (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={closeImageResult}
+                disabled={isLoadingImage}
+                className="px-0 hover:bg-transparent"
+              >
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+            ) : isChatResultView ? (
               <Button
                 variant="ghost"
                 size="md"
@@ -404,7 +422,7 @@ function SidePanel() {
               />
             ) : undefined
           }
-          centerTitle={isSparkResultView || isChatResultView}
+          centerTitle={isImageResultView || isSparkResultView || isChatResultView}
         />
 
         <main className="flex-1 overflow-hidden">
@@ -416,10 +434,6 @@ function SidePanel() {
                 sessionId: imageResultSessionId,
                 wsId: selectedWorkspaceId,
                 isLoading: isLoadingImage,
-                onBack: () => {
-                  setSelectedImageUrl(null);
-                  setImageResult(null);
-                },
               }}
               showChatResult={showChatResult}
               chatProps={{

@@ -1,12 +1,12 @@
 import { useEffect } from "react";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { Image as ImageIcon, Sparkles } from "lucide-react";
 import { buildRemixUrl } from "../../lib/remix-url";
 import { AnimatedMarkdown } from "../shared/AnimatedMarkdown";
-import { StickyActionBar } from "../shared/StickyActionBar";
 import { MediaPreview } from "../shared/MediaPreview";
-import { Button } from "../shared/Button";
+import { StickyActionBar } from "../shared/StickyActionBar";
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+const LOADING_LINE_WIDTHS = ["76%", "91%", "84%", "96%", "72%", "88%"];
 
 interface Props {
   imageUrl: string;
@@ -14,10 +14,9 @@ interface Props {
   sessionId: string | null;
   wsId: string | null;
   isLoading: boolean;
-  onBack: () => void;
 }
 
-export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading, onBack }: Props) {
+export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading }: Props) {
   const remixUrl = buildRemixUrl(BASE_URL, wsId, sessionId);
 
   // Revoke blob URLs on unmount
@@ -28,28 +27,27 @@ export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading, onBa
   }, [imageUrl]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3 shrink-0">
-        <Button
-          variant="icon"
-          size="icon-md"
-          onClick={onBack}
-        >
-          <ArrowLeft size={15} />
-        </Button>
-        <span className="text-sm font-medium text-foreground">Image Analysis</span>
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 bg-background px-4 py-4 text-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
+            <ImageIcon size={16} />
+          </div>
+
+          <span className="truncate text-sm text-foreground/70">Image Analysis</span>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+      <div className="ek-scroll flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         <MediaPreview url={imageUrl} className="w-full max-h-48" />
 
         {isLoading ? (
           <div className="flex flex-col gap-2">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {LOADING_LINE_WIDTHS.map((width) => (
               <div
-                key={i}
-                className="h-3 rounded bg-muted animate-pulse"
-                style={{ width: `${70 + Math.random() * 30}%` }}
+                key={width}
+                className="h-3 animate-pulse rounded bg-muted"
+                style={{ width }}
               />
             ))}
           </div>
