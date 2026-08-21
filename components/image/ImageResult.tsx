@@ -6,6 +6,8 @@ import { MediaPreview } from "../shared/MediaPreview";
 import { StickyActionBar } from "../shared/StickyActionBar";
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+// Temporarily hidden. Set to true to restore the Remix action.
+const SHOW_REMIX_ACTION = false;
 const LOADING_LINE_WIDTHS = ["76%", "91%", "84%", "96%", "72%", "88%"];
 
 interface Props {
@@ -17,7 +19,7 @@ interface Props {
 }
 
 export function ImageResult({ imageUrl, result, sessionId, wsId, isLoading }: Props) {
-  const remixUrl = buildRemixUrl(BASE_URL, wsId, sessionId);
+  const remixUrl = SHOW_REMIX_ACTION ? buildRemixUrl(BASE_URL, wsId, sessionId) : undefined;
 
   // Revoke blob URLs on unmount
   useEffect(() => {

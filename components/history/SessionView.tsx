@@ -12,6 +12,8 @@ import { MediaPreview } from "../shared/MediaPreview";
 import { StickyActionBar } from "../shared/StickyActionBar";
 
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
+// Temporarily hidden. Set to true to restore the Remix action.
+const SHOW_REMIX_ACTION = false;
 
 interface Props {
   session: Session;
@@ -42,12 +44,13 @@ export function SessionHeaderTitle({ session, onBack }: HeaderTitleProps) {
 export function SessionView({ session, wsId }: Props) {
   const [sparkCache] = useStorageItem(sparkCacheStorage);
   const { imageUrl, isImageSession } = getSessionDisplay(session, sparkCache);
-  const openUrl =
-    isImageSession
+  const openUrl = isImageSession
+    ? SHOW_REMIX_ACTION
       ? buildRemixUrl(BASE_URL, wsId, session.id)
-      : wsId
-        ? `${BASE_URL}/api/ws/${wsId}/extension/sessions/${session.id}/thread`
-        : undefined;
+      : undefined
+    : wsId
+      ? `${BASE_URL}/api/ws/${wsId}/extension/sessions/${session.id}/thread`
+      : undefined;
 
   return (
     <div className="flex flex-col h-full">
