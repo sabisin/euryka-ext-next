@@ -41,6 +41,7 @@ interface ProtocolMap {
   sidePanelReady(data: { tabId: number }): void;
   keepAlive(): void;
   reset(): void;
+  validateSession(): { token: string | null; authChanged: boolean };
   getTabUrl(data: { tabId: number }): { url: string };
   saveToCollection(data: {
     type: CollectionItemType;

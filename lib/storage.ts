@@ -6,6 +6,7 @@ import type {
   SparkCache,
   UserPrefs,
 } from "./types";
+import type { AnnotationListResponse } from "./annotations-api";
 import {
   createSupabaseCollectionItemsStorage,
   createSupabaseCollectionsStorage,
@@ -13,6 +14,21 @@ import {
 
 export const authStorage = storage.defineItem<AuthState>("local:auth", {
   defaultValue: { token: "", expDate: "" },
+});
+
+export interface AnnotationCacheEntry {
+  userKey: string;
+  fetchedAt: number;
+  response: AnnotationListResponse;
+}
+
+export const annotationCacheStorage = storage.defineItem<Record<string, AnnotationCacheEntry>>(
+  "session:annotationCache",
+  { defaultValue: {} }
+);
+
+export const authValidatedAtStorage = storage.defineItem<number>("session:authValidatedAt", {
+  defaultValue: 0,
 });
 
 export const userPrefs = storage.defineItem<UserPrefs>("local:userPrefs", {

@@ -6,17 +6,17 @@ import { useStorageItem } from "../../hooks/use-storage-item";
 import {
   type Annotation,
   firestoreTimestampToMs,
-  listAnnotations,
 } from "../../lib/annotations-api";
-import { runWithTokenRetry } from "../../lib/auth";
 import { repairMarkdownForDisplay } from "../../lib/markdown";
 import { sendMessage } from "../../lib/messaging";
-import { authStorage, pageUrlStorage, userPrefs } from "../../lib/storage";
+import { authStorage, userPrefs } from "../../lib/storage";
 import type { AuthState, UserPrefs } from "../../lib/types";
 import { Button } from "../shared/Button";
 import { AnnotationAvatar } from "./AnnotationAvatar";
 
 interface Props {
+  currentTabUrl: string | null;
+  authToken: string;
   onSelectMarker: (id: string) => void;
 }
 
@@ -61,8 +61,7 @@ function buildAnnotationNumbers(annotations: Annotation[]): Map<string, number> 
   return result;
 }
 
-export function AnnotationsList({ onSelectMarker }: Props) {
-  const [storedPageUrl] = useStorageItem(pageUrlStorage);
+export function AnnotationsList({ currentTabUrl, authToken, onSelectMarker }: Props) {
   const [auth] = useStorageItem<AuthState>(authStorage);
   const [prefs, setPrefs] = useStorageItem(userPrefs);
   const typedPrefs = prefs as UserPrefs | undefined;
@@ -72,8 +71,10 @@ export function AnnotationsList({ onSelectMarker }: Props) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
 
-  const pageUrl = typeof storedPageUrl === "string" ? storedPageUrl : "";
+  const pageUrl = currentTabUrl ?? "";
   const hidden = typedPrefs?.annotationsHidden ?? false;
 
   useEffect(() => {
@@ -83,25 +84,27 @@ export function AnnotationsList({ onSelectMarker }: Props) {
 
   const fetchAnnotations = useCallback(
     async (cursor?: string) => {
+      if (!authToken) {
+        return { annotations: [], nextCursor: null };
+      }
       if (tab === "current" && !pageUrl) {
         return { annotations: [], nextCursor: null };
       }
 
-      return runWithTokenRetry((token) =>
-        listAnnotations(token, {
-          targetUrl: tab === "current" ? pageUrl : undefined,
-          limit: PAGE_SIZE,
-          cursor,
-        })
-      );
+      return sendMessage("listAnnotations", {
+        targetUrl: tab === "current" ? pageUrl : undefined,
+        limit: PAGE_SIZE,
+        cursor,
+      });
     },
-    [pageUrl, tab]
+    [authToken, pageUrl, tab]
   );
 
   useEffect(() => {
     let cancelled = false;
     setAnnotations([]);
     setNextCursor(null);
+    setLoadError(false);
     setIsLoading(true);
     fetchAnnotations()
       .then((response) => {
@@ -113,6 +116,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
         if (cancelled) return;
         setAnnotations([]);
         setNextCursor(null);
+        setLoadError(true);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -120,7 +124,7 @@ export function AnnotationsList({ onSelectMarker }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [fetchAnnotations]);
+  }, [fetchAnnotations, loadRevision]);
 
   useEffect(() => {
     const handleUpdate = (event: Event) => {
@@ -282,6 +286,8 @@ export function AnnotationsList({ onSelectMarker }: Props) {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
           <AnnotationsLoadingState />
+        ) : loadError ? (
+          <AnnotationLoadError onRetry={() => setLoadRevision((current) => current + 1)} />
         ) : !hasAny ? (
           <EmptyState
             message={tab === "current" ? "No annotations on this page" : "No annotations yet"}
@@ -333,6 +339,17 @@ export function AnnotationsList({ onSelectMarker }: Props) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AnnotationLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+      <p className="text-sm font-medium text-foreground/70">Could not load annotations</p>
+      <Button variant="ghost" size="sm" onClick={onRetry}>
+        Try again
+      </Button>
     </div>
   );
 }

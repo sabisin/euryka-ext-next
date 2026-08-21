@@ -1,7 +1,20 @@
-import { authStorage } from "./storage";
+import { annotationCacheStorage, authStorage, authValidatedAtStorage } from "./storage";
+import {
+  AUTH_VALIDATION_TTL_MS,
+  isAuthValidationFresh,
+} from "./auth-validation-policy";
 
-interface JwtPayload {
+export { AUTH_VALIDATION_TTL_MS };
+export interface AuthValidationResult {
+  token: string | null;
+  authChanged: boolean;
+}
+
+let validationInFlight: Promise<AuthValidationResult> | null = null;
+
+export interface JwtPayload {
   exp?: number;
+  sub?: string;
   name?: string;
   email?: string;
   picture?: string;
@@ -55,6 +68,7 @@ export async function fetchAndStoreToken(): Promise<string | null> {
       email: payload.email ?? current.email,
       avatarUrl: payload.picture ?? payload.avatar_url ?? current.avatarUrl,
     });
+    await authValidatedAtStorage.setValue(Date.now());
     return token;
   } catch {
     // Network failure — keep any existing token; it may still be valid.
@@ -68,8 +82,42 @@ export async function getValidToken(): Promise<string | null> {
   return fetchAndStoreToken();
 }
 
+export async function validateAuthSession(): Promise<AuthValidationResult> {
+  const [auth, validatedAt] = await Promise.all([
+    authStorage.getValue(),
+    authValidatedAtStorage.getValue(),
+  ]);
+  if (
+    auth.token &&
+    !isTokenExpired(auth.expDate) &&
+    isAuthValidationFresh(validatedAt)
+  ) {
+    return { token: auth.token, authChanged: false };
+  }
+
+  if (validationInFlight) return validationInFlight;
+  validationInFlight = fetchAndStoreToken()
+    .then(async (token) => {
+      if (token) return { token, authChanged: token !== auth.token };
+      const current = await authStorage.getValue();
+      if (!current.token || isTokenExpired(current.expDate)) {
+        return { token: null, authChanged: Boolean(auth.token) };
+      }
+      await authValidatedAtStorage.setValue(Date.now());
+      return { token: current.token, authChanged: current.token !== auth.token };
+    })
+    .finally(() => {
+      validationInFlight = null;
+    });
+  return validationInFlight;
+}
+
 export async function clearAuth(): Promise<void> {
-  await authStorage.setValue({ token: "", expDate: "" });
+  await Promise.all([
+    authStorage.setValue({ token: "", expDate: "" }),
+    authValidatedAtStorage.setValue(0),
+    annotationCacheStorage.setValue({}),
+  ]);
 }
 
 export async function runWithTokenRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {

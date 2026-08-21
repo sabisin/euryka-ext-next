@@ -4,8 +4,10 @@ import "../../tailwind.css";
 import logoLight from "../../assets/logo-remade-black-red.svg";
 import logoDark from "../../assets/logo-remade-red-white.svg";
 import { ResolvedThemeProvider, useTheme } from "../../hooks/use-resolved-theme";
+import { useStorageItem } from "../../hooks/use-storage-item";
 import { sendMessage } from "../../lib/messaging";
-import type { UserPrefs } from "../../lib/types";
+import { authStorage } from "../../lib/storage";
+import type { AuthState, UserPrefs } from "../../lib/types";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { DraggableButton } from "./DraggableButton";
 
@@ -19,6 +21,7 @@ const CONTENT_UI_HOST_CSS = `
 
 function ContentUiApp() {
   const [prefs, setPrefs] = useState<UserPrefs | null>(null);
+  const [auth] = useStorageItem<AuthState>(authStorage);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,22 +49,27 @@ function ContentUiApp() {
 
   return (
     <ResolvedThemeProvider preference={prefs?.theme}>
-      <ThemedContentUi prefs={prefs} onPrefsChange={setPrefs} />
+      <ThemedContentUi
+        authenticated={Boolean(auth?.token)}
+        prefs={prefs}
+        onPrefsChange={setPrefs}
+      />
     </ResolvedThemeProvider>
   );
 }
 
 interface ThemedContentUiProps {
+  authenticated: boolean;
   prefs: UserPrefs | null;
   onPrefsChange: (prefs: UserPrefs) => void;
 }
 
-function ThemedContentUi({ prefs, onPrefsChange }: ThemedContentUiProps) {
+function ThemedContentUi({ authenticated, prefs, onPrefsChange }: ThemedContentUiProps) {
   const theme = useTheme();
 
   return (
     <div data-theme={theme} className="contents">
-      <AnnotationLayer annotationsHidden={prefs?.annotationsHidden} />
+      {authenticated && <AnnotationLayer annotationsHidden={prefs?.annotationsHidden} />}
       {prefs?.showFloatingButton && (
         <DraggableButton
           logo={theme === "dark" ? logoDark : logoLight}

@@ -29,7 +29,7 @@ import { useStorageItem } from "../../hooks/use-storage-item";
 import { useTabContext } from "../../hooks/use-tab-context";
 import { ThemeProvider } from "../../hooks/use-theme";
 import { useWorkspaceData } from "../../hooks/use-workspace";
-import { fetchAndStoreToken } from "../../lib/auth";
+import { sendMessage } from "../../lib/messaging";
 import {
   SPARK_RECOMMENDATION_CHROME_PROMPT_LIMITS,
   getChatContextLimitState,
@@ -191,8 +191,8 @@ function SidePanel() {
       if (validating) return;
       validating = true;
       try {
-        const token = await fetchAndStoreToken();
-        if (token) {
+        const { token, authChanged } = await sendMessage("validateSession", undefined);
+        if (token && authChanged) {
           await queryClient.invalidateQueries({ queryKey: ["workspace"] });
         }
       } finally {
@@ -520,6 +520,8 @@ function SidePanel() {
             />
           ) : currentPage === "annotations" ? (
             <AnnotationsPage
+              currentTabUrl={currentTabUrl}
+              authToken={auth?.token ?? ""}
               selectedMarkerId={selectedMarkerId}
               onSelectMarker={setSelectedMarkerId}
             />

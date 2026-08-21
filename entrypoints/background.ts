@@ -8,14 +8,24 @@ import {
   selectedTextSelectorStorage,
   userPrefs,
 } from "../lib/storage";
-import { fetchAndStoreToken, isTokenExpired, runWithTokenRetry } from "../lib/auth";
+import {
+  clearAuth,
+  fetchAndStoreToken,
+  isTokenExpired,
+  runWithTokenRetry,
+  validateAuthSession,
+} from "../lib/auth";
+import {
+  clearAnnotationCache,
+  invalidateAnnotationCacheForToken,
+  listAnnotationsWithCache,
+} from "../lib/annotation-cache";
 import { isSameAnnotationTarget } from "../lib/annotation-sync";
 import { debugLog } from "../lib/debug";
 import {
   type AnnotationCreateResponse,
   createAnnotation,
   deleteAnnotation,
-  listAnnotations,
   updateAnnotation,
 } from "../lib/annotations-api";
 
@@ -25,6 +35,9 @@ const openSidePanelTabs = new Set<number>();
 const TOGGLE_ANNOTATIONS_COMMAND = "toggle-annotations";
 const BASE_URL = import.meta.env.WXT_BASE_URL as string;
 const INTERNAL_THREAD_REDIRECT_RULE_ID = 1;
+const AUTH_CONTEXT_MENU_IDS = ["analyseImage", "annotatePage"] as const;
+
+let contextMenusAuthenticated: boolean | undefined;
 
 // Queue actions that arrive before side panel sends sidePanelReady
 const pendingActions = new Map<
@@ -49,6 +62,27 @@ const logCollectionSave = debugLog("[Euryka collections]");
 
 function isTrackablePageUrl(url: string | undefined): url is string {
   return Boolean(url && /^https?:\/\//i.test(url));
+}
+
+function hasAuthenticatedSession(auth: { token: string }): boolean {
+  return Boolean(auth.token);
+}
+
+function updateAuthContextMenuVisibility(visible: boolean) {
+  contextMenusAuthenticated = visible;
+
+  for (const id of AUTH_CONTEXT_MENU_IDS) {
+    chrome.contextMenus.update(id, { visible }, () => {
+      // The items do not exist yet on a first install. The install handler
+      // creates them with the cached visibility and then synchronizes again.
+      void chrome.runtime.lastError;
+    });
+  }
+}
+
+async function syncAuthContextMenuVisibility() {
+  const auth = await authStorage.getValue();
+  updateAuthContextMenuVisibility(hasAuthenticatedSession(auth));
 }
 
 async function broadcastAnnotationUpdated(response: AnnotationCreateResponse) {
@@ -145,6 +179,14 @@ export default defineBackground(() => {
     console.error("Failed to configure the Euryka thread redirect", error);
   });
 
+  // Context menu items persist across service-worker restarts, so reconcile
+  // them on every background start and whenever authentication changes.
+  void syncAuthContextMenuVisibility();
+  authStorage.watch((auth) => {
+    updateAuthContextMenuVisibility(hasAuthenticatedSession(auth));
+    if (!auth.token) void clearAnnotationCache();
+  });
+
   // ─── Install ───────────────────────────────────────────────────────────────
   chrome.runtime.onInstalled.addListener(() => {
     // Disabled by default. Each tab opts in via setOptions on first open.
@@ -158,6 +200,7 @@ export default defineBackground(() => {
         title: "Analyse Image with Euryka",
         contexts: ["image"],
         documentUrlPatterns: ["http://*/*", "https://*/*"],
+        visible: contextMenusAuthenticated ?? false,
       });
 
       chrome.contextMenus.create({
@@ -165,7 +208,10 @@ export default defineBackground(() => {
         title: "Annotate with Euryka",
         contexts: ["page", "selection", "link", "image"],
         documentUrlPatterns: ["http://*/*", "https://*/*"],
+        visible: contextMenusAuthenticated ?? false,
       });
+
+      void syncAuthContextMenuVisibility();
     });
   });
 
@@ -193,30 +239,38 @@ export default defineBackground(() => {
   // open() MUST be synchronous within this handler. No await before bindAndOpen.
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "annotatePage") {
-      if (tab?.id) {
-        sendMessage("createAnnotationMarker", undefined, tab.id).catch(() => {});
-      }
+      if (!tab?.id || contextMenusAuthenticated === false) return;
+      const tabId = tab.id;
+      void authStorage.getValue().then((auth) => {
+        if (!hasAuthenticatedSession(auth)) return;
+        sendMessage("createAnnotationMarker", undefined, tabId).catch(() => {});
+      });
       return;
     }
 
-    if (info.menuItemId !== "analyseImage" || !tab?.id) return;
+    if (info.menuItemId !== "analyseImage" || !tab?.id || contextMenusAuthenticated === false)
+      return;
     const imageUrl = info.srcUrl ?? info.linkUrl ?? "";
     if (!imageUrl) return;
 
     const tabId = tab.id;
     bindAndOpen(tabId, tab.windowId);
 
-    // Queue or send the action depending on whether the panel is already mounted.
-    // NOTE: sendMessage without tabId uses chrome.runtime.sendMessage (broadcast to all
-    // extension contexts including side panels). Sending WITH tabId uses chrome.tabs.sendMessage
-    // which only reaches content scripts — so we always broadcast and filter by forTabId in panel.
-    if (openSidePanelTabs.has(tabId)) {
-      sendMessage("analyseImage", { imageUrl, pageUrl: info.pageUrl, forTabId: tabId }).catch(
-        () => {}
-      );
-    } else {
-      pendingActions.set(tabId, { type: "analyseImage", imageUrl, pageUrl: info.pageUrl });
-    }
+    void authStorage.getValue().then((auth) => {
+      if (!hasAuthenticatedSession(auth)) return;
+
+      // Queue or send the action depending on whether the panel is already mounted.
+      // NOTE: sendMessage without tabId uses chrome.runtime.sendMessage (broadcast to all
+      // extension contexts including side panels). Sending WITH tabId uses chrome.tabs.sendMessage
+      // which only reaches content scripts — so we always broadcast and filter by forTabId in panel.
+      if (openSidePanelTabs.has(tabId)) {
+        sendMessage("analyseImage", { imageUrl, pageUrl: info.pageUrl, forTabId: tabId }).catch(
+          () => {}
+        );
+      } else {
+        pendingActions.set(tabId, { type: "analyseImage", imageUrl, pageUrl: info.pageUrl });
+      }
+    });
   });
 
   // ─── Tab activated ──────────────────────────────────────────────────────────
@@ -289,12 +343,13 @@ export default defineBackground(() => {
   });
 
   onMessage("listAnnotations", ({ data }) =>
-    runWithTokenRetry((token) => listAnnotations(token, data))
+    runWithTokenRetry((token) => listAnnotationsWithCache(token, data))
   );
 
   onMessage("createAnnotation", ({ data }) =>
     runWithTokenRetry(async (token) => {
       const response = await createAnnotation(token, data);
+      await invalidateAnnotationCacheForToken(token);
       await broadcastAnnotationUpdated(response);
       return response;
     })
@@ -303,15 +358,21 @@ export default defineBackground(() => {
   onMessage("updateAnnotation", ({ data }) =>
     runWithTokenRetry(async (token) => {
       const response = await updateAnnotation(token, data.id, data.payload);
+      await invalidateAnnotationCacheForToken(token);
       await broadcastAnnotationUpdated(response);
       return response;
     })
   );
 
   onMessage("deleteAnnotation", async ({ data }) => {
-    await runWithTokenRetry((token) => deleteAnnotation(token, data.id));
+    await runWithTokenRetry(async (token) => {
+      await deleteAnnotation(token, data.id);
+      await invalidateAnnotationCacheForToken(token);
+    });
     await broadcastAnnotationDeleted(data.id, data.targetUrl);
   });
+
+  onMessage("validateSession", () => validateAuthSession());
 
   onMessage("getUserPrefs", () => userPrefs.getValue());
 
@@ -400,7 +461,7 @@ export default defineBackground(() => {
   });
 
   onMessage("reset", async () => {
-    await authStorage.setValue({ token: "", expDate: "" });
+    await clearAuth();
   });
 
   onMessage("keepAlive", () => {
