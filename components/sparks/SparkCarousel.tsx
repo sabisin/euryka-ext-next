@@ -62,13 +62,20 @@ export function SparkCarousel({ sparks, onUseSpark, perColumn = 3 }: Props) {
 
   if (columns.length === 0) return null;
 
-  // Single column → no carousel chrome, just render it directly.
+  // Keep sparse categories out of the carousel while matching its responsive
+  // column width and gutter at every panel size.
   if (columns.length === 1) {
     return (
-      <div className="flex flex-col gap-2">
-        {columns[0].map((spark) => (
-          <SparkCard key={spark.id} spark={spark} onUse={onUseSpark} />
-        ))}
+      <div className="overflow-hidden">
+        <div className="-ml-2 flex">
+          <div className="min-w-0 flex-[0_0_100%] pl-2 min-[480px]:flex-[0_0_50%] min-[720px]:flex-[0_0_33.333%]">
+            <div className="flex flex-col gap-2">
+              {columns[0].map((spark) => (
+                <SparkCard key={spark.id} spark={spark} onUse={onUseSpark} />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
